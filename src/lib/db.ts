@@ -16,7 +16,11 @@ CREATE TABLE IF NOT EXISTS questions (
   answer_count       INTEGER NOT NULL DEFAULT 0,
   accepted_answer_id INTEGER,
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
-  edited_at          TIMESTAMPTZ
+  edited_at          TIMESTAMPTZ,
+  -- visible | pending (waiting for a tutor) | hidden (auto-hidden by reports)
+  status             TEXT NOT NULL DEFAULT 'visible',
+  status_reason      TEXT,
+  reviewed_at        TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS questions_created_idx ON questions (created_at DESC);
 CREATE INDEX IF NOT EXISTS questions_tag_idx ON questions (tag, created_at DESC);
@@ -33,7 +37,10 @@ CREATE TABLE IF NOT EXISTS answers (
   ip_hash       TEXT NOT NULL,
   score         INTEGER NOT NULL DEFAULT 0,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  edited_at     TIMESTAMPTZ
+  edited_at     TIMESTAMPTZ,
+  status        TEXT NOT NULL DEFAULT 'visible',
+  status_reason TEXT,
+  reviewed_at   TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS answers_question_idx ON answers (question_id, created_at);
 CREATE INDEX IF NOT EXISTS answers_recovery_idx ON answers (recovery_hash);
@@ -65,6 +72,31 @@ CREATE TABLE IF NOT EXISTS activity (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS activity_created_idx ON activity (created_at);
+
+CREATE TABLE IF NOT EXISTS reports (
+  target_type TEXT NOT NULL,
+  target_id   INTEGER NOT NULL,
+  reporter_id TEXT NOT NULL,
+  reason      TEXT NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (target_type, target_id, reporter_id)
+);
+
+-- Admin-editable settings; see src/lib/settings.ts. Values are JSON text.
+CREATE TABLE IF NOT EXISTS settings (
+  key            TEXT PRIMARY KEY,
+  default_value  TEXT,
+  override_value TEXT,
+  override_until TIMESTAMPTZ
+);
+
+-- Admin additions to the profanity filter: extra blocked words, and built-in words to allow.
+CREATE TABLE IF NOT EXISTS filter_words (
+  word     TEXT NOT NULL,
+  list     TEXT NOT NULL,
+  added_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (word, list)
+);
 `;
 
 const globalForDb = globalThis as unknown as {

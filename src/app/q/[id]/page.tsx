@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import { cache } from "react";
 import { AnswerForm } from "@/components/AnswerForm";
 import { EditButton, EditForm, Editable } from "@/components/EditPost";
+import { ReportButton } from "@/components/ReportButton";
+import { StatusBadge } from "@/components/StatusBadge";
 import { AcceptButton, DeleteButton } from "@/components/PostControls";
 import { RichText } from "@/components/RichText";
 import { TagBadge } from "@/components/TagBadge";
@@ -11,12 +13,13 @@ import { VoteButton } from "@/components/VoteButton";
 import { plural, timeAgo } from "@/lib/format";
 import { getVisitorId, isAdmin } from "@/lib/identity";
 import { getQuestion } from "@/lib/queries";
+import { getSettings } from "@/lib/settings-store";
 
 // Shared by generateMetadata and the page so the DB is queried once per request.
 const load = cache(async (rawId: string) => {
   const id = Number(rawId);
   if (!Number.isSafeInteger(id) || id <= 0 || id > 2_147_483_647) return null;
-  return getQuestion(id, await getVisitorId());
+  return getQuestion(id, await getVisitorId(), await isAdmin());
 });
 
 export async function generateMetadata({ params }: PageProps<"/q/[id]">): Promise<Metadata> {
@@ -59,7 +62,7 @@ export default async function QuestionPage({ params }: PageProps<"/q/[id]">) {
   const data = await load((await params).id);
   if (!data) notFound();
   const { question: q, answers } = data;
-  const admin = await isAdmin();
+  const [admin, settings] = await Promise.all([isAdmin(), getSettings()]);
 
   return (
     <div className="space-y-5">
@@ -73,6 +76,7 @@ export default async function QuestionPage({ params }: PageProps<"/q/[id]">) {
             <EditForm type="q" id={q.id} title={q.title} body={q.body} tag={q.tag} imageUrl={q.image_url} />
           }
         >
+          <StatusBadge status={q.status} reason={q.status_reason} />
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <TagBadge tag={q.tag} />
             {q.accepted_answer_id && (
@@ -85,7 +89,8 @@ export default async function QuestionPage({ params }: PageProps<"/q/[id]">) {
           <div className="flex flex-wrap items-center gap-3 border-t border-line pt-3">
             <VoteButton type="q" id={q.id} score={q.score} voted={q.voted} />
             <Byline author={q.author} date={q.created_at} edited={q.edited_at} />
-            <span className="ml-auto flex gap-3">
+            <span className="ml-auto flex flex-wrap items-center gap-3">
+              {!q.is_mine && <ReportButton type="q" id={q.id} />}
               {q.is_mine && <EditButton />}
               {(q.is_mine || admin) && <DeleteButton type="q" id={q.id} />}
             </span>
@@ -109,6 +114,7 @@ export default async function QuestionPage({ params }: PageProps<"/q/[id]">) {
               }`}
             >
               <Editable form={<EditForm type="a" id={a.id} body={a.body} imageUrl={a.image_url} />}>
+                <StatusBadge status={a.status} reason={a.status_reason} />
                 {accepted && (
                   <p className="text-sm font-semibold text-brand">✓ Marked as the solution by the asker</p>
                 )}
@@ -117,7 +123,8 @@ export default async function QuestionPage({ params }: PageProps<"/q/[id]">) {
                 <div className="flex flex-wrap items-center gap-3">
                   <VoteButton type="a" id={a.id} score={a.score} voted={a.voted} />
                   <Byline author={a.author} date={a.created_at} edited={a.edited_at} />
-                  <span className="ml-auto flex gap-3">
+                  <span className="ml-auto flex flex-wrap items-center gap-3">
+                    {!a.is_mine && <ReportButton type="a" id={a.id} />}
                     {q.is_mine && <AcceptButton questionId={q.id} answerId={a.id} accepted={accepted} />}
                     {a.is_mine && <EditButton />}
                     {(a.is_mine || admin) && <DeleteButton type="a" id={a.id} />}
@@ -129,7 +136,12 @@ export default async function QuestionPage({ params }: PageProps<"/q/[id]">) {
         })}
       </section>
 
-      <AnswerForm questionId={q.id} />
+      <AnswerForm
+        questionId={q.id}
+        readOnly={settings.readOnly}
+        approvalRequired={settings.approvalRequired}
+        uploadsPaused={settings.uploadsPaused}
+      />
 
       <p className="text-center text-sm text-muted">
         Posted here from another browser?{" "}

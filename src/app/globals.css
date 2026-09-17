@@ -13,6 +13,8 @@
   --on-brand: #ffffff;
   --accent: #ffb500;
   --accent-strong: #9a5b00;
+  /* Text on the amber accent: the accent stays amber in dark mode, so this does too. */
+  --on-accent: #3d2600;
   --link: #1d6b3a;
   --code: #eceee9;
   --danger: #b42318;
@@ -31,6 +33,7 @@
     --on-brand: #08140c;
     --accent: #ffc53d;
     --accent-strong: #ffc53d;
+    --on-accent: #3d2600;
     --link: #7fd29a;
     --code: #1f2922;
     --danger: #f97066;
@@ -49,6 +52,7 @@
   --color-on-brand: var(--on-brand);
   --color-accent: var(--accent);
   --color-accent-strong: var(--accent-strong);
+  --color-on-accent: var(--on-accent);
   --color-link: var(--link);
   --color-code: var(--code);
   --color-danger: var(--danger);

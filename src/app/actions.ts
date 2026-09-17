@@ -2,6 +2,7 @@
 
 import { createHash, randomInt } from "node:crypto";
 import { refresh, revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import type postgres from "postgres";
 import { db } from "@/lib/db";
@@ -12,6 +13,10 @@ import {
   logInAdmin,
   logOutAdmin,
 } from "@/lib/identity";
+import { isDuplicate, moderate } from "@/lib/moderation";
+import { notifyDiscord } from "@/lib/notify";
+import { REPORT_REASONS } from "@/lib/report-reasons";
+import { getSettings } from "@/lib/settings-store";
 import { checkImage, deleteImages, saveImage } from "@/lib/storage";
 import { isTag } from "@/lib/tags";
 
@@ -21,7 +26,12 @@ export type FormState = {
   /** Set after posting: the new question's id, and the one-time recovery code. */
   id?: number;
   code?: string;
+  /** The post is waiting for a tutor to approve it. */
+  pending?: boolean;
 };
+
+const READ_ONLY = "The board is paused right now. Check back in a bit!";
+const ALREADY_POSTED = "You already posted that.";
 
 // Spam limits: per browser, and looser ones per IP (campus Wi-Fi shares IPs).
 const MAX_POSTS_PER_VISITOR = 6; // per 10 minutes
@@ -33,6 +43,7 @@ const MAX_EDITS_PER_VISITOR = 20; // per 10 minutes
 const MAX_LOGIN_FAILURES_PER_IP = 5; // per 15 minutes
 const MAX_LOGIN_FAILURES_TOTAL = 30; // per 15 minutes, across all IPs
 const MAX_CODE_FAILURES_PER_IP = 20; // per 15 minutes
+const MAX_REPORTS_PER_IP = 30; // per 10 minutes
 
 const LIMITS = { title: 150, body: 5000, author: 30 };
 
@@ -88,7 +99,7 @@ function answerError(body: string, hasImage: boolean): string | null {
 // Rate limits
 
 type Who = { visitorId: string; ipHash: string };
-type ActivityKind = "post" | "upload" | "edit" | "login_fail" | "code_fail";
+type ActivityKind = "post" | "upload" | "edit" | "login_fail" | "code_fail" | "report";
 
 async function whoAmI(): Promise<Who> {
   return { visitorId: await getOrCreateVisitorId(), ipHash: await getIpHash() };
@@ -112,6 +123,7 @@ type Activity = {
   login_fails_by_ip: number;
   login_fails_total: number;
   code_fails_by_ip: number;
+  reports_by_ip: number;
 };
 
 async function recentActivity(who: Pick<Who, "ipHash"> & { visitorId?: string }): Promise<Activity> {
@@ -126,7 +138,8 @@ async function recentActivity(who: Pick<Who, "ipHash"> & { visitorId?: string })
       coalesce(sum(bytes) FILTER (WHERE kind = 'upload'), 0)::float8 AS upload_bytes_today,
       count(*) FILTER (WHERE kind = 'login_fail' AND ip_hash = ${who.ipHash} AND created_at > now() - interval '15 minutes')::int AS login_fails_by_ip,
       count(*) FILTER (WHERE kind = 'login_fail' AND created_at > now() - interval '15 minutes')::int AS login_fails_total,
-      count(*) FILTER (WHERE kind = 'code_fail' AND ip_hash = ${who.ipHash} AND created_at > now() - interval '15 minutes')::int AS code_fails_by_ip
+      count(*) FILTER (WHERE kind = 'code_fail' AND ip_hash = ${who.ipHash} AND created_at > now() - interval '15 minutes')::int AS code_fails_by_ip,
+      count(*) FILTER (WHERE kind = 'report' AND ip_hash = ${who.ipHash} AND created_at > now() - interval '10 minutes')::int AS reports_by_ip
     FROM activity
     WHERE created_at > now() - interval '1 day'
   `;
@@ -196,6 +209,15 @@ function ownedBy(sql: postgres.Sql, type: PostType, id: number, visitorId: strin
   )`;
 }
 
+/** Keeps answer_count in sync with the answers people can actually see. */
+async function recountAnswers(tx: postgres.TransactionSql | postgres.Sql, questionId: number) {
+  await tx`
+    UPDATE questions SET answer_count = (
+      SELECT count(*) FROM answers WHERE question_id = ${questionId} AND status = 'visible'
+    ) WHERE id = ${questionId}
+  `;
+}
+
 // ---------------------------------------------------------------------------
 // Posting
 
@@ -207,25 +229,51 @@ export async function createQuestion(_prev: FormState, form: FormData): Promise<
   const invalid = questionError(fields);
   if (invalid) return { error: invalid };
 
+  const settings = await getSettings();
+  if (settings.readOnly) return { error: READ_ONLY };
+
   const who = await whoAmI();
   const activity = await recentActivity(who);
   if (activity.posts_by_visitor >= MAX_POSTS_PER_VISITOR || activity.posts_by_ip >= MAX_POSTS_PER_IP) {
     return { error: SLOW_DOWN };
   }
-  const stored = await storeImage(imageFrom(form), who, activity);
+  if (await isDuplicate("questions", "title", fields.title, who.visitorId, who.ipHash)) {
+    return { error: ALREADY_POSTED };
+  }
+
+  const author = text(form, "author").slice(0, LIMITS.author);
+  const verdict = await moderate(
+    [fields.title, fields.body, author],
+    settings.filterMode,
+    settings.approvalRequired,
+  );
+  if (verdict.action === "block") return { error: verdict.reason };
+  const [title, body, nickname] = verdict.texts;
+
+  const image = imageFrom(form);
+  if (image && settings.uploadsPaused) {
+    return { error: "Photo uploads are paused right now. You can still post text." };
+  }
+  const stored = await storeImage(image, who, activity);
   if ("error" in stored) return { error: stored.error };
 
+  const pending = verdict.action === "review";
   const code = newRecoveryCode();
   const sql = await db();
   const [row] = await sql<{ id: number }[]>`
-    INSERT INTO questions (title, body, tag, author, image_url, owner_id, recovery_hash, ip_hash)
-    VALUES (${fields.title}, ${fields.body}, ${fields.tag}, ${text(form, "author").slice(0, LIMITS.author)},
-            ${stored.url}, ${who.visitorId}, ${hashCode(code)}, ${who.ipHash})
+    INSERT INTO questions (title, body, tag, author, image_url, owner_id, recovery_hash, ip_hash,
+                           status, status_reason)
+    VALUES (${title}, ${body}, ${fields.tag}, ${nickname}, ${stored.url}, ${who.visitorId},
+            ${hashCode(code)}, ${who.ipHash},
+            ${pending ? "pending" : "visible"}, ${pending ? verdict.reason : null})
     RETURNING id
   `;
   await logActivity("post", who);
+  if (pending || settings.notifyAllPosts) {
+    after(notifyDiscord(pending ? `Question waiting for review (${verdict.reason})` : "New question", title, `/q/${row.id}`));
+  }
   revalidatePath("/");
-  return { ok: true, id: row.id, code };
+  return { ok: true, id: row.id, code, pending };
 }
 
 export async function createAnswer(_prev: FormState, form: FormData): Promise<FormState> {
@@ -237,27 +285,44 @@ export async function createAnswer(_prev: FormState, form: FormData): Promise<Fo
   const invalid = answerError(body, !!imageFrom(form));
   if (invalid) return { error: invalid };
 
+  const settings = await getSettings();
+  if (settings.readOnly) return { error: READ_ONLY };
+
   const who = await whoAmI();
   const activity = await recentActivity(who);
   if (activity.posts_by_visitor >= MAX_POSTS_PER_VISITOR || activity.posts_by_ip >= MAX_POSTS_PER_IP) {
     return { error: SLOW_DOWN };
   }
-  const stored = await storeImage(imageFrom(form), who, activity);
+  if (await isDuplicate("answers", "body", body, who.visitorId, who.ipHash)) {
+    return { error: ALREADY_POSTED };
+  }
+
+  const author = text(form, "author").slice(0, LIMITS.author);
+  const verdict = await moderate([body, author], settings.filterMode, settings.approvalRequired);
+  if (verdict.action === "block") return { error: verdict.reason };
+  const [cleanBody, nickname] = verdict.texts;
+
+  const image = imageFrom(form);
+  if (image && settings.uploadsPaused) {
+    return { error: "Photo uploads are paused right now. You can still post text." };
+  }
+  const stored = await storeImage(image, who, activity);
   if ("error" in stored) return { error: stored.error };
 
+  const pending = verdict.action === "review";
   const code = newRecoveryCode();
   const sql = await db();
   const inserted = await sql.begin(async (tx) => {
     const [row] = await tx<{ id: number }[]>`
-      INSERT INTO answers (question_id, body, author, image_url, owner_id, recovery_hash, ip_hash)
-      SELECT ${questionId}::int, ${body}::text, ${text(form, "author").slice(0, LIMITS.author)}::text,
-             ${stored.url}::text, ${who.visitorId}::text, ${hashCode(code)}::text, ${who.ipHash}::text
+      INSERT INTO answers (question_id, body, author, image_url, owner_id, recovery_hash, ip_hash,
+                           status, status_reason)
+      SELECT ${questionId}::int, ${cleanBody}::text, ${nickname}::text, ${stored.url}::text,
+             ${who.visitorId}::text, ${hashCode(code)}::text, ${who.ipHash}::text,
+             ${pending ? "pending" : "visible"}::text, ${pending ? verdict.reason : null}::text
       WHERE EXISTS (SELECT 1 FROM questions WHERE id = ${questionId})
       RETURNING id
     `;
-    if (row) {
-      await tx`UPDATE questions SET answer_count = answer_count + 1 WHERE id = ${questionId}`;
-    }
+    if (row) await recountAnswers(tx, questionId);
     return !!row;
   });
   if (!inserted) {
@@ -266,9 +331,12 @@ export async function createAnswer(_prev: FormState, form: FormData): Promise<Fo
   }
 
   await logActivity("post", who);
+  if (pending || settings.notifyAllPosts) {
+    after(notifyDiscord(pending ? `Answer waiting for review (${verdict.reason})` : "New answer", cleanBody, `/q/${questionId}`));
+  }
   revalidatePath("/");
   refresh();
-  return { ok: true, code };
+  return { ok: true, code, pending };
 }
 
 // ---------------------------------------------------------------------------
@@ -293,6 +361,7 @@ async function editPost(
   change: ImageChange,
   update: (tx: postgres.TransactionSql, imageUrl: string | null) => Promise<unknown>,
 ): Promise<FormState> {
+  if ((await getSettings()).readOnly) return { error: READ_ONLY };
   const who = await whoAmI();
   const activity = await recentActivity(who);
   if (activity.edits_by_visitor >= MAX_EDITS_PER_VISITOR) {
@@ -308,6 +377,9 @@ async function editPost(
 
   let newUrl: string | null = null;
   if (change.kind === "replace") {
+    if ((await getSettings()).uploadsPaused) {
+      return { error: "Photo uploads are paused right now." };
+    }
     const stored = await storeImage(change.file, who, activity);
     if ("error" in stored) return { error: stored.error };
     newUrl = stored.url;
@@ -341,12 +413,23 @@ export async function updateQuestion(_prev: FormState, form: FormData): Promise<
   const invalid = questionError(fields);
   if (invalid) return { error: invalid };
 
-  return editPost("q", id, imageChangeFrom(form), (tx, imageUrl) => tx`
+  const settings = await getSettings();
+  const verdict = await moderate([fields.title, fields.body], settings.filterMode, false);
+  if (verdict.action === "block") return { error: verdict.reason };
+  const [title, body] = verdict.texts;
+  const held = verdict.action === "review" ? verdict.reason : null;
+
+  const result = await editPost("q", id, imageChangeFrom(form), (tx, imageUrl) => tx`
     UPDATE questions
-    SET title = ${fields.title}, body = ${fields.body}, tag = ${fields.tag},
-        image_url = ${imageUrl}, edited_at = now()
+    SET title = ${title}, body = ${body}, tag = ${fields.tag}, image_url = ${imageUrl}, edited_at = now(),
+        status = CASE WHEN ${held !== null} THEN 'pending' ELSE status END,
+        status_reason = CASE WHEN ${held !== null} THEN ${held} ELSE status_reason END
     WHERE id = ${id}
   `);
+  if (result.ok && held) {
+    after(notifyDiscord(`Edited question waiting for review (${held})`, title, `/q/${id}`));
+  }
+  return held && result.ok ? { ...result, pending: true } : result;
 }
 
 export async function updateAnswer(_prev: FormState, form: FormData): Promise<FormState> {
@@ -360,9 +443,77 @@ export async function updateAnswer(_prev: FormState, form: FormData): Promise<Fo
   const invalid = answerError(body, willHaveImage);
   if (invalid) return { error: invalid };
 
-  return editPost("a", id, change, (tx, imageUrl) => tx`
-    UPDATE answers SET body = ${body}, image_url = ${imageUrl}, edited_at = now() WHERE id = ${id}
-  `);
+  const settings = await getSettings();
+  const verdict = await moderate([body], settings.filterMode, false);
+  if (verdict.action === "block") return { error: verdict.reason };
+  const [cleanBody] = verdict.texts;
+  const held = verdict.action === "review" ? verdict.reason : null;
+
+  const result = await editPost("a", id, change, async (tx, imageUrl) => {
+    const [row] = await tx<{ question_id: number }[]>`
+      UPDATE answers
+      SET body = ${cleanBody}, image_url = ${imageUrl}, edited_at = now(),
+          status = CASE WHEN ${held !== null} THEN 'pending' ELSE status END,
+          status_reason = CASE WHEN ${held !== null} THEN ${held} ELSE status_reason END
+      WHERE id = ${id}
+      RETURNING question_id
+    `;
+    if (row) await recountAnswers(tx, row.question_id);
+  });
+  if (result.ok && held) {
+    after(notifyDiscord(`Edited answer waiting for review (${held})`, cleanBody, `/q/${id}`));
+  }
+  return held && result.ok ? { ...result, pending: true } : result;
+}
+
+// ---------------------------------------------------------------------------
+// Reporting
+
+/** Anyone can report a post; enough reports hide it until a tutor looks. */
+export async function reportPost(type: PostType, id: number, reason: string): Promise<void> {
+  if ((type !== "q" && type !== "a") || !isId(id)) return;
+  if (!(REPORT_REASONS as readonly string[]).includes(reason)) return;
+
+  const who = await whoAmI();
+  const activity = await recentActivity(who);
+  if (activity.reports_by_ip >= MAX_REPORTS_PER_IP) return;
+
+  const sql = await db();
+  const table = sql(type === "q" ? "questions" : "answers");
+  const added = await sql`
+    INSERT INTO reports (target_type, target_id, reporter_id, reason)
+    SELECT ${type}, ${id}, ${who.visitorId}, ${reason}
+    WHERE EXISTS (SELECT 1 FROM ${table} WHERE id = ${id})
+    ON CONFLICT DO NOTHING
+    RETURNING 1
+  `;
+  if (!added.length) return;
+  await logActivity("report", who);
+
+  const threshold = (await getSettings()).reportThreshold;
+  const [row] = await sql<{ reports: number; status: string; reviewed: boolean; label: string; question_id: number }[]>`
+    SELECT (SELECT count(*)::int FROM reports WHERE target_type = ${type} AND target_id = ${id}) AS reports,
+           t.status, (t.reviewed_at IS NOT NULL) AS reviewed,
+           ${type === "q" ? sql`t.title` : sql`t.body`} AS label,
+           ${type === "q" ? sql`t.id` : sql`t.question_id`} AS question_id
+    FROM ${table} t WHERE t.id = ${id}
+  `;
+  if (!row) return;
+
+  const hide = row.reports >= threshold && row.status === "visible" && !row.reviewed;
+  if (hide) {
+    await sql`UPDATE ${table} SET status = 'hidden', status_reason = 'reports' WHERE id = ${id}`;
+    if (type === "a") await recountAnswers(sql, row.question_id);
+  }
+  after(
+    notifyDiscord(
+      hide ? `Auto-hidden after ${row.reports} reports` : `Reported (${reason}) — ${row.reports} so far`,
+      row.label,
+      `/q/${row.question_id}`,
+    ),
+  );
+  revalidatePath("/");
+  refresh();
 }
 
 /** Unlocks a post in this browser using the recovery code shown when it was posted. */
@@ -404,6 +555,7 @@ export async function recoverPost(_prev: FormState, form: FormData): Promise<For
 
 export async function toggleVote(type: PostType, id: number): Promise<void> {
   if ((type !== "q" && type !== "a") || !isId(id)) return;
+  if ((await getSettings()).readOnly) return;
   const { visitorId, ipHash } = await whoAmI();
   const sql = await db();
   const table = sql(type === "q" ? "questions" : "answers");

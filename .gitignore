@@ -42,3 +42,6 @@ next-env.d.ts
 
 # local image uploads (dev only)
 /public/uploads
+
+# keep the template for required environment variables
+!.env.example

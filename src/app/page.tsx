@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { AskForm } from "@/components/AskForm";
 import { QuestionCard } from "@/components/QuestionCard";
-import { getVisitorId } from "@/lib/identity";
+import { StatusBadge } from "@/components/StatusBadge";
+import { getVisitorId, isAdmin } from "@/lib/identity";
+import { getSettings } from "@/lib/settings-store";
 import { listQuestions, SORTS, type Sort } from "@/lib/queries";
 import { isTag, TAGS, tagLabel } from "@/lib/tags";
 
@@ -35,17 +37,23 @@ export default async function Home({ searchParams }: PageProps<"/">) {
   const page = Math.max(1, Math.min(500, Number.parseInt(first(raw.page) ?? "1", 10) || 1));
   const current: Params = { sort, tag, q: search, page: String(page) };
 
+  const [settings, admin] = await Promise.all([getSettings(), isAdmin()]);
   const { questions, hasMore } = await listQuestions({
     sort,
     tag,
     search,
     page,
     visitorId: await getVisitorId(),
+    admin,
   });
 
   return (
     <div className="space-y-5">
-      <AskForm />
+      <AskForm
+        readOnly={settings.readOnly}
+        approvalRequired={settings.approvalRequired}
+        uploadsPaused={settings.uploadsPaused}
+      />
 
       <section aria-label="Questions" className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -122,7 +130,10 @@ export default async function Home({ searchParams }: PageProps<"/">) {
         ) : (
           <div className="space-y-3">
             {questions.map((q) => (
-              <QuestionCard key={q.id} q={q} />
+              <div key={q.id} className="space-y-1">
+                <StatusBadge status={q.status} reason={q.status_reason} />
+                <QuestionCard q={q} />
+              </div>
             ))}
           </div>
         )}

@@ -8,13 +8,21 @@ import { NicknameInput } from "./NicknameInput";
 import { PostedNotice } from "./PostedNotice";
 import { TagSelect } from "./TagSelect";
 
-export function AskForm() {
+export function AskForm({
+  readOnly,
+  approvalRequired,
+  uploadsPaused,
+}: {
+  readOnly: boolean;
+  approvalRequired: boolean;
+  uploadsPaused: boolean;
+}) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [image, setImage] = useState<File | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [state, formAction, pending] = useActionState<FormState, FormData>(createQuestion, {});
-  const [notice, setNotice] = useState<{ id: number; code: string } | null>(null);
+  const [notice, setNotice] = useState<{ id: number; code: string; pending: boolean } | null>(null);
 
   useEffect(() => {
     if (!state.ok || !state.id || !state.code) return;
@@ -22,7 +30,7 @@ export function AskForm() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- react to a completed post
     setImage(null);
     setExpanded(false);
-    setNotice({ id: state.id, code: state.code });
+    setNotice({ id: state.id, code: state.code, pending: !!state.pending });
   }, [state]);
 
   // onSubmit (not `action`) so React doesn't wipe what was typed when validation fails.
@@ -39,12 +47,18 @@ export function AskForm() {
         <label htmlFor="title" className="mb-2 block text-lg font-semibold">
           Ask a question
         </label>
+        {readOnly && (
+          <p className="mb-2 rounded-lg bg-subtle px-3 py-2 text-sm text-muted">
+            Posting is paused right now — check back in a bit.
+          </p>
+        )}
         <input
           id="title"
           name="title"
           required
           minLength={5}
           maxLength={150}
+          disabled={readOnly}
           placeholder="e.g. Why does my linked list lose its head node?"
           onFocus={() => setExpanded(true)}
           className="w-full rounded-lg border border-line bg-bg px-3 py-2.5 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/25"
@@ -65,7 +79,11 @@ export function AskForm() {
           {/* Honeypot: hidden from people, tempting to bots. */}
           <input name="website" tabIndex={-1} autoComplete="off" aria-hidden className="hidden" />
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <ImagePicker file={image} onChange={setImage} disabled={pending} />
+            {uploadsPaused ? (
+              <span className="text-sm text-muted">Photo uploads are paused right now.</span>
+            ) : (
+              <ImagePicker file={image} onChange={setImage} disabled={pending} />
+            )}
             <button
               type="submit"
               disabled={pending}
@@ -74,6 +92,9 @@ export function AskForm() {
               {pending ? "Posting…" : "Post question"}
             </button>
           </div>
+          {approvalRequired && (
+            <p className="text-sm text-muted">New posts are reviewed by a tutor before they show up.</p>
+          )}
           {state.error && (
             <p role="alert" className="text-sm text-danger">
               {state.error}
@@ -86,6 +107,7 @@ export function AskForm() {
         <PostedNotice
           kind="question"
           code={notice.code}
+          pending={notice.pending}
           actionLabel="View my question"
           onClose={() => {
             setNotice(null);

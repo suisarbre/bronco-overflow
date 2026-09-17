@@ -7,11 +7,13 @@ export function PostedNotice({
   kind,
   code,
   actionLabel,
+  pending,
   onClose,
 }: {
   kind: "question" | "answer";
   code: string;
   actionLabel: string;
+  pending?: boolean;
   onClose: () => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -43,8 +45,13 @@ export function PostedNotice({
     >
       <div className="space-y-4 p-5 sm:p-6">
         <h2 id="posted-title" className="text-xl font-bold">
-          Your {kind} is posted!
+          {pending ? `Your ${kind} is waiting for review` : `Your ${kind} is posted!`}
         </h2>
+        {pending && (
+          <p className="rounded-lg bg-accent/15 px-3 py-2 text-sm text-accent-strong">
+            A tutor will approve it shortly. Until then, only you can see it.
+          </p>
+        )}
         <p className="text-sm leading-relaxed text-muted">
           You can edit or delete it from <strong className="text-fg">this browser</strong>. If you open the
           site in a different browser or device, use a private window, or clear your cookies, you&apos;ll need

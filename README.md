@@ -8,7 +8,9 @@ Cal Poly Pomona CS 튜터링용 익명 Q&A 사이트. QR 코드를 찍고 들어
 - 추천(upvote), 질문자가 답변을 "solution"으로 채택
 - 자기 글은 같은 브라우저에서 수정/삭제 가능 ("edited" 표시)
 - 글을 올리면 **복구 코드**(`XXXX-XXXX-XXXX`)를 한 번 보여줌 → 다른 기기/브라우저에서 `/recover` 에 입력하면 그 글을 수정/삭제 가능 (DB에는 해시만 저장)
-- 튜터는 `/admin` 에서 로그인하면 모든 글 삭제 가능
+- 신고 버튼: 서로 다른 3명(기본값)이 신고하면 자동으로 숨겨지고 튜터가 검토
+- 튜터 `/admin` 페이지: 비상 정지, 임시 설정(1·2·6·12·24시간 또는 직접 끌 때까지), 기본값 설정, 금지어 관리, 검토 대기/신고/최근 글 처리(승인·숨김·삭제·작성자 글 일괄 삭제)
+- Discord 웹훅 알림 (새 글, 검토 대기, 신고, 자동 숨김)
 - 사진은 브라우저에서 최대 1600px WebP로 줄여서 업로드 (보통 수백 KB 이하, 서버 한도 2 MB, 파일 내용으로 형식 확인)
 - `/qr`: 사이트 주소가 들어간 인쇄용 QR 포스터
 
@@ -24,6 +26,22 @@ Cal Poly Pomona CS 튜터링용 익명 Q&A 사이트. QR 코드를 찍고 들어
 | 수정 | 브라우저당 10분 20회 |
 | 복구 코드 틀림 | IP당 15분 20회 |
 | 관리자 로그인 실패 | IP당 15분 5회, 전체 15분 30회 |
+| 신고 | IP당 10분 30회 |
+
+### 관리자 설정 (`/admin`)
+
+각 설정은 **기본값**과 **임시 변경값**을 따로 가져요. 임시 변경은 고른 시간이 지나면 자동으로 기본값으로 돌아가고, "Clear all temporary changes" 로 한꺼번에 해제할 수 있어요. **STOP EVERYTHING** 은 직접 끌 때까지 사이트를 읽기 전용으로 만들어요.
+
+| 설정 | 기본값 |
+| --- | --- |
+| 읽기 전용 모드 | 끔 |
+| 새 글 승인 후 공개 | 끔 |
+| 사진 업로드 중지 | 끔 |
+| 욕설 필터 (끄기 / 가려서 올리기 / 검토 대기 / 차단) | 가려서 올리기 |
+| 자동 숨김 신고 수 | 3 |
+| 모든 새 글 Discord 알림 | 켬 |
+
+욕설 필터는 영어 기본 목록([obscenity](https://github.com/jo3-l/obscenity))을 쓰고, `f.u.c.k` 나 `sh1t` 같은 변형도 잡아요. 관리자 페이지에서 단어를 추가하거나(예: `chegg`), 기본 목록의 단어를 해제할 수 있고, 문장을 넣어 바로 테스트할 수 있어요. 링크가 4개 이상인 글은 자동으로 검토 대기로 가요. 1시간 안에 완전히 똑같은 글을 다시 올리면 막는데, 같은 브라우저면 언제나 막고 같은 IP는 글이 60자 이상일 때만 막아요 (캠퍼스 와이파이는 IP를 공유하니까, 다른 사람이 쓴 짧은 답변까지 막히지 않도록요).
 
 ## 스택 (전부 무료 티어)
 
@@ -50,8 +68,9 @@ Cal Poly Pomona CS 튜터링용 익명 Q&A 사이트. QR 코드를 찍고 들어
 4. **사진 저장소 연결**: 같은 **Storage** 탭에서 **Blob** 생성 → 프로젝트에 연결.
    `BLOB_READ_WRITE_TOKEN` 이 자동으로 추가돼요.
 5. **관리자 비밀번호**: 프로젝트 → **Settings → Environment Variables** 에 `ADMIN_PASSWORD` 추가 (길게).
-6. **Redeploy**: Deployments → 최신 배포 → Redeploy. 이후에는 `main` 에 push할 때마다 자동 배포돼요.
-7. `https://<프로젝트>.vercel.app/qr` 을 열어서 포스터를 인쇄하면 끝.
+6. **(선택) Discord 알림**: Discord 채널 설정 → 연동 → 웹후크에서 URL을 만들어 `DISCORD_WEBHOOK_URL` 환경변수에 추가해요.
+7. **Redeploy**: Deployments → 최신 배포 → Redeploy. 이후에는 `main` 에 push할 때마다 자동 배포돼요.
+8. `https://<프로젝트>.vercel.app/qr` 을 열어서 포스터를 인쇄하면 끝.
 
 > 환경변수 이름이 다르게 들어갔다면 (예: `POSTGRES_URL` 만 있는 경우) `DATABASE_URL` 에 같은 값을 넣어주세요.
 > Neon은 **pooled** 연결 문자열(호스트에 `-pooler` 포함)을 쓰는 게 좋아요.
@@ -71,6 +90,8 @@ npm run dev
 
 - 수업 목록 / 태그: [src/lib/tags.ts](src/lib/tags.ts) (한번 쓰인 `id` 는 바꾸지 마세요)
 - 도배/업로드 한도, 글자 수 제한: [src/app/actions.ts](src/app/actions.ts)
+- 설정 목록과 기본값: [src/lib/settings.ts](src/lib/settings.ts)
+- 필터·중복·링크 규칙: [src/lib/moderation.ts](src/lib/moderation.ts)
 - 색상: [src/app/globals.css](src/app/globals.css)
 
 ## 무료 티어 참고
