@@ -13,7 +13,11 @@ deliberately small. See [Contributing](#contributing) before adding anything.
   photo, optional nickname.
 - **Text**: links become clickable, ```` ``` ```` fences render as code blocks, `` `x` `` as inline code.
   Everything else is plain text.
-- **Answers**: upvotes, and the asker can mark one answer as the solution.
+- **Answers**: upvotes, and the asker can mark one answer as the solution. An answer written by the person
+  who asked is labeled "Asker".
+- **Pinning**: tutors can pin a question to the top of the feed, or an answer to the top of a question.
+- **Ordering**: pinned first, then — for questions — "Hot" (upvotes and answers, decaying with age), or plain
+  newest. Answers go pinned, accepted, most upvoted, oldest. "Newest" and "Unanswered" ignore upvotes.
 - **Owning a post**: you can edit or delete your own posts from the browser you wrote them in (edited posts
   are labeled). Posting also shows a one-time recovery code (`XXXX-XXXX-XXXX`); entering it at `/recover`
   unlocks that post on another browser or device. Only a hash of the code is stored.
@@ -38,8 +42,10 @@ deliberately small. See [Contributing](#contributing) before adding anything.
   The server caps them at 2 MB and checks the file's real type, not what the browser claims.
 - **`/qr`**: a printable poster with a QR code pointing at the site.
 
-Not in scope on purpose: accounts and logins, video uploads, comment threads, notifications,
-private messaging, rich-text editing, analytics dashboards.
+Not in scope on purpose: accounts and logins, video uploads, replies/comment threads, notifications,
+private messaging, rich-text editing, analytics dashboards. Replies in particular would mean a third kind of
+post to report, hide, edit, delete and badge, and people would then expect notifications — which cost money.
+Answers plus upvotes and "solution" cover it at this size.
 
 ## Moderation and limits
 
@@ -95,7 +101,10 @@ photo cap; the site-wide daily photo budget still applies to everyone.
 | Database | Neon Postgres (added from Vercel's Storage tab) |
 | Photos | Vercel Blob |
 
-Tables are created on first request, so there is no migration step ([src/lib/db.ts](src/lib/db.ts)).
+Tables are created on first request ([src/lib/db.ts](src/lib/db.ts)), so there is no migration step. Note
+that `CREATE TABLE IF NOT EXISTS` skips databases that already exist: when you add a column, also add an
+`ALTER TABLE ... ADD COLUMN IF NOT EXISTS` line at the bottom of that file, or the live database won't get
+it.
 
 Free-tier notes: Vercel's Hobby plan is for non-commercial projects, which this is. A free Neon database
 sleeps when nobody is using it and wakes on the next request (your data stays). Watch the **Usage** tab in

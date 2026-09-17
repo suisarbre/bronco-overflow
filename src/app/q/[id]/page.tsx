@@ -7,7 +7,7 @@ import { EditButton, EditForm, Editable } from "@/components/EditPost";
 import { MemberBadge } from "@/components/MemberBadge";
 import { ReportButton } from "@/components/ReportButton";
 import { StatusBadge } from "@/components/StatusBadge";
-import { AcceptButton, DeleteButton } from "@/components/PostControls";
+import { AcceptButton, DeleteButton, PinButton } from "@/components/PostControls";
 import { RichText } from "@/components/RichText";
 import { TagBadge } from "@/components/TagBadge";
 import { VoteButton } from "@/components/VoteButton";
@@ -48,15 +48,25 @@ function Byline({
   date,
   edited,
   badge,
+  asker,
 }: {
   author: string;
   date: Date;
   edited: Date | null;
   badge: { title: string | null; color: string | null };
+  asker?: boolean;
 }) {
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5 text-sm text-muted">
       <MemberBadge title={badge.title} color={badge.color} />
+      {asker && (
+        <span
+          className="rounded-full bg-subtle px-2 py-0.5 text-xs font-semibold text-muted"
+          title="Written by whoever asked the question"
+        >
+          Asker
+        </span>
+      )}
       {author || "Anonymous"} ·{" "}
       <time dateTime={date.toISOString()} title={date.toLocaleString("en-US")}>
         {timeAgo(date)}
@@ -92,6 +102,9 @@ export default async function QuestionPage({ params }: PageProps<"/q/[id]">) {
           <StatusBadge status={q.status} reason={q.status_reason} />
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <TagBadge tag={q.tag} />
+            {q.pinned && (
+              <span className="rounded-full bg-subtle px-2 py-0.5 font-medium text-muted">📌 Pinned</span>
+            )}
             {q.accepted_answer_id && (
               <span className="rounded-full bg-brand px-2 py-0.5 font-medium text-on-brand">✓ Solved</span>
             )}
@@ -103,6 +116,7 @@ export default async function QuestionPage({ params }: PageProps<"/q/[id]">) {
             <VoteButton type="q" id={q.id} score={q.score} voted={q.voted} />
             <Byline author={q.author} date={q.created_at} edited={q.edited_at} badge={{ title: q.badge_title, color: q.badge_color }} />
             <span className="ml-auto flex flex-wrap items-center gap-3">
+              {staff && <PinButton type="q" id={q.id} pinned={q.pinned} />}
               {!q.is_mine && <ReportButton type="q" id={q.id} />}
               {q.is_mine && <EditButton />}
               {(q.is_mine || staff) && <DeleteButton type="q" id={q.id} />}
@@ -128,6 +142,7 @@ export default async function QuestionPage({ params }: PageProps<"/q/[id]">) {
             >
               <Editable form={<EditForm type="a" id={a.id} body={a.body} imageUrl={a.image_url} />}>
                 <StatusBadge status={a.status} reason={a.status_reason} />
+                {a.pinned && <p className="text-sm font-medium text-muted">📌 Pinned by a tutor</p>}
                 {accepted && (
                   <p className="text-sm font-semibold text-brand">✓ Marked as the solution by the asker</p>
                 )}
@@ -135,8 +150,15 @@ export default async function QuestionPage({ params }: PageProps<"/q/[id]">) {
                 {a.image_url && <Attachment url={a.image_url} />}
                 <div className="flex flex-wrap items-center gap-3">
                   <VoteButton type="a" id={a.id} score={a.score} voted={a.voted} />
-                  <Byline author={a.author} date={a.created_at} edited={a.edited_at} badge={{ title: a.badge_title, color: a.badge_color }} />
+                  <Byline
+                    author={a.author}
+                    date={a.created_at}
+                    edited={a.edited_at}
+                    badge={{ title: a.badge_title, color: a.badge_color }}
+                    asker={a.by_asker}
+                  />
                   <span className="ml-auto flex flex-wrap items-center gap-3">
+                    {staff && <PinButton type="a" id={a.id} pinned={a.pinned} />}
                     {!a.is_mine && <ReportButton type="a" id={a.id} />}
                     {q.is_mine && <AcceptButton questionId={q.id} answerId={a.id} accepted={accepted} />}
                     {a.is_mine && <EditButton />}

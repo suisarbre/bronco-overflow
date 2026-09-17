@@ -21,8 +21,11 @@ CREATE TABLE IF NOT EXISTS questions (
   -- visible | pending (waiting for a tutor) | hidden (auto-hidden by reports)
   status             TEXT NOT NULL DEFAULT 'visible',
   status_reason      TEXT,
-  reviewed_at        TIMESTAMPTZ
+  reviewed_at        TIMESTAMPTZ,
+  -- Set by a tutor to keep something at the top of the feed.
+  pinned_at          TIMESTAMPTZ
 );
+
 CREATE INDEX IF NOT EXISTS questions_created_idx ON questions (created_at DESC);
 CREATE INDEX IF NOT EXISTS questions_tag_idx ON questions (tag, created_at DESC);
 CREATE INDEX IF NOT EXISTS questions_recovery_idx ON questions (recovery_hash);
@@ -42,7 +45,8 @@ CREATE TABLE IF NOT EXISTS answers (
   edited_at     TIMESTAMPTZ,
   status        TEXT NOT NULL DEFAULT 'visible',
   status_reason TEXT,
-  reviewed_at   TIMESTAMPTZ
+  reviewed_at   TIMESTAMPTZ,
+  pinned_at     TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS answers_question_idx ON answers (question_id, created_at);
 CREATE INDEX IF NOT EXISTS answers_recovery_idx ON answers (recovery_hash);
@@ -124,6 +128,14 @@ CREATE TABLE IF NOT EXISTS filter_words (
   added_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (word, list)
 );
+
+-- Columns added after the first deploy. CREATE TABLE only runs on an empty
+-- database, so every new column also needs a line here to reach one that
+-- already has data. These are cheap no-ops once applied.
+ALTER TABLE questions ADD COLUMN IF NOT EXISTS member_id INTEGER;
+ALTER TABLE questions ADD COLUMN IF NOT EXISTS pinned_at TIMESTAMPTZ;
+ALTER TABLE answers   ADD COLUMN IF NOT EXISTS member_id INTEGER;
+ALTER TABLE answers   ADD COLUMN IF NOT EXISTS pinned_at TIMESTAMPTZ;
 `;
 
 const globalForDb = globalThis as unknown as {

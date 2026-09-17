@@ -605,6 +605,21 @@ export async function toggleVote(type: PostType, id: number): Promise<void> {
   refresh();
 }
 
+/** Tutors pin a post to keep it at the top of the feed (or of a question's answers). */
+export async function togglePin(type: PostType, id: number): Promise<void> {
+  if ((type !== "q" && type !== "a") || !isId(id)) return;
+  if (!(await isStaff())) return;
+  const sql = await db();
+  const table = sql(type === "q" ? "questions" : "answers");
+  await sql`
+    UPDATE ${table}
+    SET pinned_at = CASE WHEN pinned_at IS NULL THEN now() ELSE NULL END
+    WHERE id = ${id}
+  `;
+  revalidatePath("/");
+  refresh();
+}
+
 /** The question's author can mark (or unmark) one answer as the one that solved it. */
 export async function toggleAccepted(questionId: number, answerId: number): Promise<void> {
   if (!isId(questionId) || !isId(answerId)) return;

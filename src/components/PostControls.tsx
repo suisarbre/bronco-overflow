@@ -1,7 +1,7 @@
 "use client";
 
 import { useTransition } from "react";
-import { deleteAnswer, deleteQuestion, toggleAccepted } from "@/app/actions";
+import { deleteAnswer, deleteQuestion, toggleAccepted, togglePin } from "@/app/actions";
 
 const linkButton = "text-sm text-muted underline-offset-2 hover:underline disabled:opacity-50";
 
@@ -20,6 +20,20 @@ export function DeleteButton({ type, id }: { type: "q" | "a"; id: number }) {
       }}
     >
       {pending ? "Deleting…" : "Delete"}
+    </button>
+  );
+}
+
+export function PinButton({ type, id, pinned }: { type: "q" | "a"; id: number; pinned: boolean }) {
+  const [pending, startTransition] = useTransition();
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      className={`${linkButton} hover:text-fg`}
+      onClick={() => startTransition(() => togglePin(type, id))}
+    >
+      {pinned ? "Unpin" : "Pin"}
     </button>
   );
 }

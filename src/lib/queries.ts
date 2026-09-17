@@ -24,6 +24,7 @@ export type QuestionRow = {
   status_reason: string | null;
   badge_title: string | null;
   badge_color: string | null;
+  pinned: boolean;
   is_mine: boolean;
   voted: boolean;
 };
@@ -40,6 +41,9 @@ export type AnswerRow = {
   status_reason: string | null;
   badge_title: string | null;
   badge_color: string | null;
+  pinned: boolean;
+  /** Written by the person who asked the question. */
+  by_asker: boolean;
   is_mine: boolean;
   voted: boolean;
 };
@@ -84,6 +88,7 @@ export async function listQuestions(opts: {
     SELECT q.id, q.title, q.body, q.tag, q.author, q.image_url, q.score,
            q.answer_count, q.accepted_answer_id, q.created_at, q.edited_at,
            q.status, q.status_reason, m.title AS badge_title, m.color AS badge_color,
+           (q.pinned_at IS NOT NULL) AS pinned,
            ${mine(sql, "q", visitor, opts.memberId)} AS is_mine,
            EXISTS (SELECT 1 FROM votes v WHERE v.target_type = 'q'
                    AND v.target_id = q.id AND v.voter_id = ${visitor}) AS voted
@@ -93,7 +98,7 @@ export async function listQuestions(opts: {
       ${opts.tag ? sql`AND q.tag = ${opts.tag}` : sql``}
       ${opts.sort === "unanswered" ? sql`AND q.answer_count = 0` : sql``}
       ${pattern ? sql`AND (q.title ILIKE ${pattern} OR q.body ILIKE ${pattern})` : sql``}
-    ORDER BY ${order}, q.id DESC
+    ORDER BY (q.pinned_at IS NOT NULL) DESC, ${order}, q.id DESC
     LIMIT ${PAGE_SIZE + 1} OFFSET ${(opts.page - 1) * PAGE_SIZE}
   `;
   return { questions: rows.slice(0, PAGE_SIZE), hasMore: rows.length > PAGE_SIZE };
@@ -107,10 +112,11 @@ export async function getQuestion(
 ): Promise<{ question: QuestionRow; answers: AnswerRow[] } | null> {
   const sql = await db();
   const visitor = visitorId ?? "";
-  const [question] = await sql<QuestionRow[]>`
-    SELECT q.id, q.title, q.body, q.tag, q.author, q.image_url, q.score,
+  const [question] = await sql<(QuestionRow & { owner_id: string; member_id: number | null })[]>`
+    SELECT q.id, q.title, q.body, q.tag, q.author, q.image_url, q.score, q.owner_id, q.member_id,
            q.answer_count, q.accepted_answer_id, q.created_at, q.edited_at,
            q.status, q.status_reason, m.title AS badge_title, m.color AS badge_color,
+           (q.pinned_at IS NOT NULL) AS pinned,
            ${mine(sql, "q", visitor, memberId)} AS is_mine,
            EXISTS (SELECT 1 FROM votes v WHERE v.target_type = 'q'
                    AND v.target_id = q.id AND v.voter_id = ${visitor}) AS voted
@@ -124,13 +130,18 @@ export async function getQuestion(
   const answers = await sql<AnswerRow[]>`
     SELECT a.id, a.body, a.author, a.image_url, a.score, a.created_at, a.edited_at,
            a.status, a.status_reason, m.title AS badge_title, m.color AS badge_color,
+           (a.pinned_at IS NOT NULL) AS pinned,
+           (a.owner_id = ${question.owner_id}
+            OR (a.member_id IS NOT NULL AND a.member_id = ${question.member_id})) AS by_asker,
            ${mine(sql, "a", visitor, memberId)} AS is_mine,
            EXISTS (SELECT 1 FROM votes v WHERE v.target_type = 'a'
                    AND v.target_id = a.id AND v.voter_id = ${visitor}) AS voted
     FROM answers a
     LEFT JOIN members m ON m.id = a.member_id
     WHERE a.question_id = ${id} AND ${visible(sql, "a", visitor, staff, memberId)}
-    ORDER BY (a.id = ${question.accepted_answer_id ?? 0}) DESC, a.score DESC, a.created_at ASC
+    ORDER BY (a.pinned_at IS NOT NULL) DESC,
+             (a.id = ${question.accepted_answer_id ?? 0}) DESC,
+             a.score DESC, a.created_at ASC
   `;
   return { question, answers };
 }
