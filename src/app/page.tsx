@@ -2,7 +2,8 @@ import Link from "next/link";
 import { AskForm } from "@/components/AskForm";
 import { QuestionCard } from "@/components/QuestionCard";
 import { StatusBadge } from "@/components/StatusBadge";
-import { getVisitorId, isAdmin } from "@/lib/identity";
+import { getVisitorId, isStaff } from "@/lib/identity";
+import { getMember } from "@/lib/members";
 import { getSettings } from "@/lib/settings-store";
 import { listQuestions, SORTS, type Sort } from "@/lib/queries";
 import { isTag, TAGS, tagLabel } from "@/lib/tags";
@@ -37,14 +38,15 @@ export default async function Home({ searchParams }: PageProps<"/">) {
   const page = Math.max(1, Math.min(500, Number.parseInt(first(raw.page) ?? "1", 10) || 1));
   const current: Params = { sort, tag, q: search, page: String(page) };
 
-  const [settings, admin] = await Promise.all([getSettings(), isAdmin()]);
+  const [settings, staff, member] = await Promise.all([getSettings(), isStaff(), getMember()]);
   const { questions, hasMore } = await listQuestions({
     sort,
     tag,
     search,
     page,
     visitorId: await getVisitorId(),
-    admin,
+    memberId: member?.id,
+    admin: staff,
   });
 
   return (

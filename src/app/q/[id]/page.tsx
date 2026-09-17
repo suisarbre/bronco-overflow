@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { cache } from "react";
 import { AnswerForm } from "@/components/AnswerForm";
 import { EditButton, EditForm, Editable } from "@/components/EditPost";
+import { MemberBadge } from "@/components/MemberBadge";
 import { ReportButton } from "@/components/ReportButton";
 import { StatusBadge } from "@/components/StatusBadge";
 import { AcceptButton, DeleteButton } from "@/components/PostControls";
@@ -11,7 +12,8 @@ import { RichText } from "@/components/RichText";
 import { TagBadge } from "@/components/TagBadge";
 import { VoteButton } from "@/components/VoteButton";
 import { plural, timeAgo } from "@/lib/format";
-import { getVisitorId, isAdmin } from "@/lib/identity";
+import { getVisitorId, isStaff } from "@/lib/identity";
+import { getMember } from "@/lib/members";
 import { getQuestion } from "@/lib/queries";
 import { getSettings } from "@/lib/settings-store";
 
@@ -19,7 +21,7 @@ import { getSettings } from "@/lib/settings-store";
 const load = cache(async (rawId: string) => {
   const id = Number(rawId);
   if (!Number.isSafeInteger(id) || id <= 0 || id > 2_147_483_647) return null;
-  return getQuestion(id, await getVisitorId(), await isAdmin());
+  return getQuestion(id, await getVisitorId(), await isStaff(), (await getMember())?.id ?? null);
 });
 
 export async function generateMetadata({ params }: PageProps<"/q/[id]">): Promise<Metadata> {
@@ -41,9 +43,20 @@ function Attachment({ url }: { url: string }) {
   );
 }
 
-function Byline({ author, date, edited }: { author: string; date: Date; edited: Date | null }) {
+function Byline({
+  author,
+  date,
+  edited,
+  badge,
+}: {
+  author: string;
+  date: Date;
+  edited: Date | null;
+  badge: { title: string | null; color: string | null };
+}) {
   return (
-    <span className="text-sm text-muted">
+    <span className="inline-flex flex-wrap items-center gap-1.5 text-sm text-muted">
+      <MemberBadge title={badge.title} color={badge.color} />
       {author || "Anonymous"} ·{" "}
       <time dateTime={date.toISOString()} title={date.toLocaleString("en-US")}>
         {timeAgo(date)}
@@ -62,7 +75,7 @@ export default async function QuestionPage({ params }: PageProps<"/q/[id]">) {
   const data = await load((await params).id);
   if (!data) notFound();
   const { question: q, answers } = data;
-  const [admin, settings] = await Promise.all([isAdmin(), getSettings()]);
+  const [staff, settings] = await Promise.all([isStaff(), getSettings()]);
 
   return (
     <div className="space-y-5">
@@ -88,11 +101,11 @@ export default async function QuestionPage({ params }: PageProps<"/q/[id]">) {
           {q.image_url && <Attachment url={q.image_url} />}
           <div className="flex flex-wrap items-center gap-3 border-t border-line pt-3">
             <VoteButton type="q" id={q.id} score={q.score} voted={q.voted} />
-            <Byline author={q.author} date={q.created_at} edited={q.edited_at} />
+            <Byline author={q.author} date={q.created_at} edited={q.edited_at} badge={{ title: q.badge_title, color: q.badge_color }} />
             <span className="ml-auto flex flex-wrap items-center gap-3">
               {!q.is_mine && <ReportButton type="q" id={q.id} />}
               {q.is_mine && <EditButton />}
-              {(q.is_mine || admin) && <DeleteButton type="q" id={q.id} />}
+              {(q.is_mine || staff) && <DeleteButton type="q" id={q.id} />}
             </span>
           </div>
         </Editable>
@@ -122,12 +135,12 @@ export default async function QuestionPage({ params }: PageProps<"/q/[id]">) {
                 {a.image_url && <Attachment url={a.image_url} />}
                 <div className="flex flex-wrap items-center gap-3">
                   <VoteButton type="a" id={a.id} score={a.score} voted={a.voted} />
-                  <Byline author={a.author} date={a.created_at} edited={a.edited_at} />
+                  <Byline author={a.author} date={a.created_at} edited={a.edited_at} badge={{ title: a.badge_title, color: a.badge_color }} />
                   <span className="ml-auto flex flex-wrap items-center gap-3">
                     {!a.is_mine && <ReportButton type="a" id={a.id} />}
                     {q.is_mine && <AcceptButton questionId={q.id} answerId={a.id} accepted={accepted} />}
                     {a.is_mine && <EditButton />}
-                    {(a.is_mine || admin) && <DeleteButton type="a" id={a.id} />}
+                    {(a.is_mine || staff) && <DeleteButton type="a" id={a.id} />}
                   </span>
                 </div>
               </Editable>

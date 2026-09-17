@@ -21,19 +21,21 @@ async function matches(password: string, stored: string): Promise<boolean> {
   return actual.length === expectedBuf.length && timingSafeEqual(actual, expectedBuf);
 }
 
+export type StaffRole = "admin" | "tutor";
+
 /**
- * The tutor password lives in the database so the server can rotate it and post
- * the new one to Discord. `ADMIN_PASSWORD` stays valid as a break-glass key for
- * when Discord isn't reachable.
+ * Which role a password grants, if any. The tutor password lives in the database
+ * so the server can rotate it and post the new one to Discord; `ADMIN_PASSWORD`
+ * stays valid as a break-glass key, and grants the wider admin role.
  */
-export async function checkAdminPassword(password: string): Promise<boolean> {
-  if (!password) return false;
+export async function checkAdminPassword(password: string): Promise<StaffRole | null> {
+  if (!password) return null;
   const env = process.env.ADMIN_PASSWORD;
   if (env && password.length === env.length && timingSafeEqual(Buffer.from(password), Buffer.from(env))) {
-    return true;
+    return "admin";
   }
   const stored = await readSecret("admin_password");
-  return stored ? matches(password, stored.value) : false;
+  return stored && (await matches(password, stored.value)) ? "tutor" : null;
 }
 
 export async function adminLoginPossible(): Promise<boolean> {

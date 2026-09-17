@@ -3,8 +3,10 @@
 import { refresh, revalidatePath } from "next/cache";
 import { rotateAdminPassword } from "@/lib/admin-password";
 import { db } from "@/lib/db";
-import { isAdmin } from "@/lib/identity";
+import { isAdmin, isStaff } from "@/lib/identity";
 import { addWord, isUsableWord, removeWord, runFilter } from "@/lib/moderation";
+import { isBadgeColor, isUsableTitle, type BadgeColor } from "@/lib/member-types";
+import { createMember, regenerateCode, setMemberActive, updateMember } from "@/lib/members";
 import { notifyDiscord } from "@/lib/notify";
 import { OVERRIDE_DURATIONS, isSettingKey, parseSetting, type SettingKey } from "@/lib/settings";
 import { clearAllOverrides, clearOverride, setDefault, setOverride } from "@/lib/settings-store";
@@ -12,6 +14,12 @@ import { deleteImages } from "@/lib/storage";
 
 export type AdminState = { error?: string; ok?: string };
 
+/** Tutors and admins: everyday moderation. */
+async function requireStaff(): Promise<boolean> {
+  return isStaff();
+}
+
+/** Admins only: setting defaults, member management, password rotation, network-wide deletes. */
 async function requireAdmin(): Promise<boolean> {
   return isAdmin();
 }
@@ -58,7 +66,7 @@ export async function saveDefault(_prev: AdminState, form: FormData): Promise<Ad
 }
 
 export async function applyOverride(_prev: AdminState, form: FormData): Promise<AdminState> {
-  if (!(await requireAdmin())) return { error: "Not signed in." };
+  if (!(await requireStaff())) return { error: "Not signed in." };
   const setting = settingFrom(form);
   const hours = durationFrom(form);
   if (!setting || hours === undefined) return { error: "That setting doesn't look right." };
@@ -67,7 +75,7 @@ export async function applyOverride(_prev: AdminState, form: FormData): Promise<
 }
 
 export async function revertOverride(key: string): Promise<void> {
-  if (!(await requireAdmin()) || !isSettingKey(key)) return;
+  if (!(await requireStaff()) || !isSettingKey(key)) return;
   await clearOverride(key);
   revalidatePath("/");
   revalidatePath("/admin");
@@ -75,7 +83,7 @@ export async function revertOverride(key: string): Promise<void> {
 }
 
 export async function revertAllOverrides(): Promise<void> {
-  if (!(await requireAdmin())) return;
+  if (!(await requireStaff())) return;
   await clearAllOverrides();
   revalidatePath("/");
   revalidatePath("/admin");
@@ -84,7 +92,7 @@ export async function revertAllOverrides(): Promise<void> {
 
 /** The big red button: read-only until an admin turns it back on. */
 export async function stopEverything(): Promise<void> {
-  if (!(await requireAdmin())) return;
+  if (!(await requireStaff())) return;
   await setOverride("readOnly", true, null);
   await notifyDiscord("Board paused", "A tutor switched on read-only mode.");
   revalidatePath("/");
@@ -104,7 +112,7 @@ export async function rotatePassword(): Promise<void> {
 // Word filter
 
 export async function addFilterWord(_prev: AdminState, form: FormData): Promise<AdminState> {
-  if (!(await requireAdmin())) return { error: "Not signed in." };
+  if (!(await requireStaff())) return { error: "Not signed in." };
   const list = field(form, "list");
   const word = field(form, "word").toLowerCase();
   if (list !== "blocked" && list !== "allowed") return { error: "Unknown list." };
@@ -116,7 +124,7 @@ export async function addFilterWord(_prev: AdminState, form: FormData): Promise<
 }
 
 export async function deleteFilterWord(word: string, list: "blocked" | "allowed"): Promise<void> {
-  if (!(await requireAdmin())) return;
+  if (!(await requireStaff())) return;
   if (list !== "blocked" && list !== "allowed") return;
   await removeWord(word, list);
   revalidatePath("/admin");
@@ -124,7 +132,7 @@ export async function deleteFilterWord(word: string, list: "blocked" | "allowed"
 }
 
 export async function testFilter(_prev: AdminState, form: FormData): Promise<AdminState> {
-  if (!(await requireAdmin())) return { error: "Not signed in." };
+  if (!(await requireStaff())) return { error: "Not signed in." };
   const text = field(form, "text").slice(0, 500);
   if (!text) return {};
   const { clean, censored } = await runFilter([text]);
@@ -132,9 +140,65 @@ export async function testFilter(_prev: AdminState, form: FormData): Promise<Adm
 }
 
 // ---------------------------------------------------------------------------
+// Badge holders (teachers and other vouched-for people)
+
+/** The generated code is shown once, in `ok`, so an admin can copy it. */
+export async function addMember(_prev: AdminState, form: FormData): Promise<AdminState> {
+  if (!(await requireAdmin())) return { error: "Admins only." };
+  const title = field(form, "title");
+  const color = field(form, "color");
+  if (!isUsableTitle(title)) return { error: "Badge text is 2–24 letters, numbers, or spaces." };
+  if (!isBadgeColor(color)) return { error: "Pick a badge color." };
+  const code = await createMember(title, color, field(form, "note").slice(0, 120));
+  revalidatePath("/admin");
+  return { ok: code };
+}
+
+export async function saveMember(_prev: AdminState, form: FormData): Promise<AdminState> {
+  if (!(await requireAdmin())) return { error: "Admins only." };
+  const id = Number(field(form, "id"));
+  const title = field(form, "title");
+  const color = field(form, "color");
+  if (!isId(id)) return { error: "Unknown member." };
+  if (!isUsableTitle(title)) return { error: "Badge text is 2–24 letters, numbers, or spaces." };
+  if (!isBadgeColor(color)) return { error: "Pick a badge color." };
+  await updateMember(id, {
+    title,
+    color: color as BadgeColor,
+    note: field(form, "note").slice(0, 120),
+    relaxed_limits: field(form, "relaxed_limits") === "on",
+    skip_review: field(form, "skip_review") === "on",
+  });
+  return done("Saved.");
+}
+
+/** Hands out a fresh code. Their posts and badge stay; the old code stops working. */
+export async function newMemberCode(_prev: AdminState, form: FormData): Promise<AdminState> {
+  if (!(await requireAdmin())) return { error: "Admins only." };
+  const id = Number(field(form, "id"));
+  if (!isId(id)) return { error: "Unknown member." };
+  const code = await regenerateCode(id);
+  if (!code) return { error: "Unknown member." };
+  revalidatePath("/admin");
+  return { ok: code };
+}
+
+export async function toggleMember(id: number, active: boolean): Promise<void> {
+  if (!(await requireAdmin()) || !isId(id) || typeof active !== "boolean") return;
+  await setMemberActive(id, active);
+  revalidatePath("/");
+  revalidatePath("/admin");
+  refresh();
+}
+
+// ---------------------------------------------------------------------------
 // Moderation queue
 
 type PostType = "q" | "a";
+
+function isId(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) > 0 && (value as number) <= 2_147_483_647;
+}
 
 function isPost(type: string, id: number): type is PostType {
   return (type === "q" || type === "a") && Number.isSafeInteger(id) && id > 0 && id <= 2_147_483_647;
@@ -151,7 +215,7 @@ async function recount(questionId: number) {
 
 /** Publishes a held or hidden post, and marks it reviewed so reports don't re-hide it. */
 export async function approvePost(type: string, id: number): Promise<void> {
-  if (!(await requireAdmin()) || !isPost(type, id)) return;
+  if (!(await requireStaff()) || !isPost(type, id)) return;
   const sql = await db();
   const table = sql(type === "q" ? "questions" : "answers");
   const [row] = await sql<{ question_id: number }[]>`
@@ -167,7 +231,7 @@ export async function approvePost(type: string, id: number): Promise<void> {
 }
 
 export async function hidePost(type: string, id: number): Promise<void> {
-  if (!(await requireAdmin()) || !isPost(type, id)) return;
+  if (!(await requireStaff()) || !isPost(type, id)) return;
   const sql = await db();
   const table = sql(type === "q" ? "questions" : "answers");
   const [row] = await sql<{ question_id: number }[]>`
@@ -184,8 +248,9 @@ export async function hidePost(type: string, id: number): Promise<void> {
 
 /** Flood cleanup: removes everything one browser (or one network) posted in the last day. */
 export async function deleteByPoster(scope: "owner" | "ip", value: string): Promise<void> {
-  if (!(await requireAdmin())) return;
   if ((scope !== "owner" && scope !== "ip") || typeof value !== "string" || !value) return;
+  // Wiping a whole network can catch bystanders on campus Wi-Fi, so that half is admin-only.
+  if (!(scope === "ip" ? await requireAdmin() : await requireStaff())) return;
 
   const sql = await db();
   const column = sql(scope === "owner" ? "owner_id" : "ip_hash");

@@ -1,13 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AdminLoginForm } from "./AdminLoginForm";
+import { Members } from "./Members";
 import { DefaultForm, EmergencyButtons, KeyedAction, OverrideForm } from "./SettingControls";
 import { WordFilter } from "./WordFilter";
 import { approvePost, deleteByPoster, hidePost, rotatePassword } from "./actions";
 import { deleteAnswer, deleteQuestion } from "@/app/actions";
 import { adminLoginPossible, adminPasswordAge } from "@/lib/admin-password";
 import { timeAgo } from "@/lib/format";
-import { isAdmin } from "@/lib/identity";
+import { getStaffRole } from "@/lib/identity";
+import { listMembers } from "@/lib/members";
 import { getWordLists } from "@/lib/moderation";
 import { moderationQueue, posterCounts, recentPosts, type ModerationRow } from "@/lib/queries";
 import { FILTER_MODE_LABELS, SETTINGS, SETTING_KEYS, type SettingState } from "@/lib/settings";
@@ -31,7 +33,7 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
   );
 }
 
-async function PostRow({ row }: { row: ModerationRow }) {
+async function PostRow({ row, admin }: { row: ModerationRow; admin: boolean }) {
   const counts = await posterCounts(row.owner_id, row.ip_hash);
   const label = row.type === "q" ? row.title : row.body;
   const badge =
@@ -78,19 +80,22 @@ async function PostRow({ row }: { row: ModerationRow }) {
           confirmText={`Delete ${counts.by_owner} post(s) this browser made in the last 24 hours?`}
           action={deleteByPoster.bind(null, "owner", row.owner_id)}
         />
-        <KeyedAction
-          label={`Delete all from this network (${counts.by_ip})`}
-          danger
-          confirmText={`Delete ${counts.by_ip} post(s) from this network in the last 24 hours? On campus Wi-Fi this can include other people.`}
-          action={deleteByPoster.bind(null, "ip", row.ip_hash)}
-        />
+        {admin && (
+          <KeyedAction
+              label={`Delete all from this network (${counts.by_ip})`}
+            confirmText={`Delete ${counts.by_ip} post(s) from this network in the last 24 hours? On campus Wi-Fi this can include other people.`}
+            action={deleteByPoster.bind(null, "ip", row.ip_hash)}
+            danger
+          />
+        )}
       </div>
     </li>
   );
 }
 
 export default async function AdminPage() {
-  if (!(await isAdmin())) {
+  const role = await getStaffRole();
+  if (!role) {
     const canLogIn = await adminLoginPossible();
     return (
       <div className="mx-auto max-w-sm space-y-4 rounded-2xl border border-line bg-card p-6">
@@ -112,12 +117,14 @@ export default async function AdminPage() {
     );
   }
 
-  const [states, words, queue, recent, passwordSetAt] = await Promise.all([
+  const admin = role === "admin";
+  const [states, words, queue, recent, passwordSetAt, members] = await Promise.all([
     getSettingStates(),
     getWordLists(),
     moderationQueue(),
     recentPosts(),
-    adminPasswordAge(),
+    admin ? adminPasswordAge() : null,
+    admin ? listMembers() : [],
   ]);
   const rotationDays = states.adminPasswordDays.value;
   const webhookMissing = !process.env.DISCORD_WEBHOOK_URL;
@@ -125,7 +132,18 @@ export default async function AdminPage() {
 
   return (
     <div className="space-y-5">
-      <h1 className="text-2xl font-bold">Moderation</h1>
+      <div className="flex flex-wrap items-baseline gap-2">
+        <h1 className="text-2xl font-bold">Moderation</h1>
+        <span className="rounded-full bg-subtle px-2 py-0.5 text-sm font-medium text-muted">
+          signed in as {role}
+        </span>
+      </div>
+      {!admin && (
+        <p className="text-sm text-muted">
+          Site defaults, badge holders, and the tutor password are admin-only — they need the password from
+          Vercel&apos;s environment variables.
+        </p>
+      )}
 
       <Card title="Emergency">
         <EmergencyButtons overridesActive={overrides.length} />
@@ -165,6 +183,7 @@ export default async function AdminPage() {
         </ul>
       </Card>
 
+      {admin && (
       <Card title="Default settings">
         <ul className="space-y-4">
           {SETTING_KEYS.map((key) => (
@@ -175,7 +194,9 @@ export default async function AdminPage() {
           ))}
         </ul>
       </Card>
+      )}
 
+      {admin && (
       <Card title="Tutor password">
         <p className="text-sm text-muted">
           {webhookMissing
@@ -197,6 +218,13 @@ export default async function AdminPage() {
           />
         )}
       </Card>
+      )}
+
+      {admin && (
+      <Card title="Badge holders">
+        <Members members={members} />
+      </Card>
+      )}
 
       <Card title="Word filter">
         <WordFilter blocked={words.blocked} allowed={words.allowed} />
@@ -208,7 +236,7 @@ export default async function AdminPage() {
         ) : (
           <ul className="space-y-3">
             {queue.map((row) => (
-              <PostRow key={`${row.type}${row.id}`} row={row} />
+              <PostRow key={`${row.type}${row.id}`} row={row} admin={admin} />
             ))}
           </ul>
         )}
@@ -217,7 +245,7 @@ export default async function AdminPage() {
       <Card title="Recent posts">
         <ul className="space-y-3">
           {recent.map((row) => (
-            <PostRow key={`${row.type}${row.id}`} row={row} />
+            <PostRow key={`${row.type}${row.id}`} row={row} admin={admin} />
           ))}
         </ul>
       </Card>

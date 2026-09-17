@@ -26,7 +26,7 @@ export function RecoverForm() {
         disabled={pending}
         className="w-full rounded-lg bg-brand px-4 py-2.5 font-semibold text-on-brand hover:bg-brand-strong disabled:opacity-60"
       >
-        {pending ? "Checking…" : "Unlock my post"}
+        {pending ? "Checking…" : "Use this code"}
       </button>
     </form>
   );

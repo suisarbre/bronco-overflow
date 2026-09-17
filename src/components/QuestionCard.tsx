@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { plural, timeAgo } from "@/lib/format";
 import type { QuestionRow } from "@/lib/queries";
+import { MemberBadge } from "./MemberBadge";
 import { TagBadge } from "./TagBadge";
 import { VoteButton } from "./VoteButton";
 
@@ -11,6 +12,7 @@ export function QuestionCard({ q }: { q: QuestionRow }) {
     <article className="relative rounded-2xl border border-line bg-card p-4 transition-colors hover:border-brand/50">
       <div className="mb-1.5 flex flex-wrap items-center gap-2 text-xs text-muted">
         <TagBadge tag={q.tag} />
+        <MemberBadge title={q.badge_title} color={q.badge_color} />
         <span>{q.author || "Anonymous"}</span>
         <span aria-hidden>·</span>
         <time dateTime={q.created_at.toISOString()}>{timeAgo(q.created_at)}</time>

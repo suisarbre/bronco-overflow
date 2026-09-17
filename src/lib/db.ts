@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS questions (
   author             TEXT NOT NULL DEFAULT '',
   image_url          TEXT,
   owner_id           TEXT NOT NULL,
+  member_id          INTEGER,
   recovery_hash      TEXT,
   ip_hash            TEXT NOT NULL,
   score              INTEGER NOT NULL DEFAULT 0,
@@ -33,6 +34,7 @@ CREATE TABLE IF NOT EXISTS answers (
   author        TEXT NOT NULL DEFAULT '',
   image_url     TEXT,
   owner_id      TEXT NOT NULL,
+  member_id     INTEGER,
   recovery_hash TEXT,
   ip_hash       TEXT NOT NULL,
   score         INTEGER NOT NULL DEFAULT 0,
@@ -89,6 +91,23 @@ CREATE TABLE IF NOT EXISTS settings (
   override_value TEXT,
   override_until TIMESTAMPTZ
 );
+
+-- People a tutor vouched for: they get a badge on their posts, and sign in with
+-- a code an admin gives them. Rotating the code keeps the same member, so their
+-- old posts keep the badge.
+CREATE TABLE IF NOT EXISTS members (
+  id             SERIAL PRIMARY KEY,
+  title          TEXT NOT NULL,
+  color          TEXT NOT NULL DEFAULT 'green',
+  note           TEXT NOT NULL DEFAULT '',
+  code_hash      TEXT NOT NULL,
+  code_version   INTEGER NOT NULL DEFAULT 1,
+  relaxed_limits BOOLEAN NOT NULL DEFAULT FALSE,
+  skip_review    BOOLEAN NOT NULL DEFAULT FALSE,
+  active         BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS members_code_idx ON members (code_hash);
 
 -- Server-generated secrets: the session signing key, the IP hash salt, and the
 -- hashed tutor password. Never leaves the server.

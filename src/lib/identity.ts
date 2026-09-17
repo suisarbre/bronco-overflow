@@ -1,7 +1,7 @@
 import "server-only";
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { cookies, headers } from "next/headers";
-import { checkAdminPassword } from "./admin-password";
+import { checkAdminPassword, type StaffRole } from "./admin-password";
 import { getSecret } from "./secrets";
 
 const VISITOR_COOKIE = "qa_visitor";
@@ -42,8 +42,12 @@ export async function getIpHash(): Promise<string> {
 
 // Signed with a server-generated key, not the password, so rotating the tutor
 // password doesn't sign everyone out (and doesn't change every IP hash).
-async function adminToken(): Promise<string> {
-  return createHmac("sha256", await getSecret("session_secret")).update("admin-session").digest("hex");
+// The role is part of what's signed, so the cookie can't be edited into an admin one.
+async function staffToken(role: StaffRole): Promise<string> {
+  const mac = createHmac("sha256", await getSecret("session_secret"))
+    .update(`staff:${role}`)
+    .digest("hex");
+  return `${role}.${mac}`;
 }
 
 function safeEqual(a: string, b: string): boolean {
@@ -52,16 +56,31 @@ function safeEqual(a: string, b: string): boolean {
   return ab.length === bb.length && timingSafeEqual(ab, bb);
 }
 
-export async function isAdmin(): Promise<boolean> {
+/** "admin" (the environment password) outranks "tutor" (the rotating one). */
+export async function getStaffRole(): Promise<StaffRole | null> {
   // Read cookies first so pages using this always render per request.
   const value = (await cookies()).get(ADMIN_COOKIE)?.value;
-  if (!value) return false;
-  return safeEqual(value, await adminToken());
+  if (!value) return null;
+  for (const role of ["admin", "tutor"] as const) {
+    if (safeEqual(value, await staffToken(role))) return role;
+  }
+  return null;
+}
+
+/** True for tutors and admins: everyday moderation. */
+export async function isStaff(): Promise<boolean> {
+  return (await getStaffRole()) !== null;
+}
+
+/** True only for whoever has the environment password. */
+export async function isAdmin(): Promise<boolean> {
+  return (await getStaffRole()) === "admin";
 }
 
 export async function logInAdmin(password: string): Promise<boolean> {
-  if (!(await checkAdminPassword(password))) return false;
-  (await cookies()).set(ADMIN_COOKIE, await adminToken(), {
+  const role = await checkAdminPassword(password);
+  if (!role) return false;
+  (await cookies()).set(ADMIN_COOKIE, await staffToken(role), {
     httpOnly: true,
     sameSite: "lax",
     secure,

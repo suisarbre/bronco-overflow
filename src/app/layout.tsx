@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import { adminLogout } from "./actions";
-import { isAdmin } from "@/lib/identity";
+import { getStaffRole } from "@/lib/identity";
 import { getSettings } from "@/lib/settings-store";
 import "./globals.css";
 
@@ -32,7 +32,7 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const [admin, settings] = await Promise.all([isAdmin(), getSettings()]);
+  const [role, settings] = await Promise.all([getStaffRole(), getSettings()]);
 
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
@@ -45,7 +45,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               </span>
               CPP CS Q&amp;A
             </Link>
-            {admin && (
+            {role && (
               <span className="flex items-center gap-2 text-xs">
                 <Link href="/admin" className="rounded bg-accent px-1.5 py-0.5 font-semibold text-on-accent">
                   ADMIN

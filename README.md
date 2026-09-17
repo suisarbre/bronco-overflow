@@ -20,11 +20,19 @@ deliberately small. See [Contributing](#contributing) before adding anything.
 - **Reporting**: when enough different browsers report a post (3 by default), it is hidden for a tutor to
   review — hidden, not deleted.
 - **Tutor tools** at `/admin`: an emergency read-only switch, temporary setting changes that expire on
-  their own, editable defaults, the word filter, and a review queue with approve / hide / delete and bulk
-  delete by browser or network.
+  their own, the word filter, and a review queue with approve / hide / delete and bulk delete.
+- **Two staff logins.** Signing in with `ADMIN_PASSWORD` makes you an **admin**; signing in with the
+  rotating password makes you a **tutor**. Tutors do the day-to-day moderating. Admin-only: editing the
+  defaults, managing badge holders, rotating the password by hand, and deleting everything from one network
+  (which on campus Wi-Fi can catch bystanders).
 - **Tutor password**: the server picks a new one every 7 days (configurable) and posts it to the Discord
   channel; only its hash is stored. `ADMIN_PASSWORD` stays valid as a break-glass key. Rotation is skipped
   entirely when no Discord webhook is set, so nobody gets locked out.
+- **Badge holders**: an admin can create a badge (say "Teacher", in one of five colors) and hand out its
+  code. Posts made while signed in with that code carry the badge, and the code also lets that person edit
+  those posts from another device. Per badge holder, an admin can allow higher posting limits or skip the
+  review queue. Handing out a new code keeps the badge and the posts but signs out whoever had the old one —
+  that's the fix if a code leaks. Badges are a label, not a power: they can't moderate anything.
 - **Discord alerts** for reports, held posts, auto-hides, and (optionally) every new post.
 - **Photos**: resized in the browser to max 1600px WebP before upload, so most are a few hundred KB.
   The server caps them at 2 MB and checks the file's real type, not what the browser claims.
@@ -74,6 +82,9 @@ site read-only until a tutor turns it back on.
 | Reports before auto-hide | 3 |
 | Discord alert for every new post | On |
 | New tutor password every … days | 7 (0 turns rotation off) |
+
+Badge holders with "higher limits" get five times the per-browser posting allowance and skip the per-network
+photo cap; the site-wide daily photo budget still applies to everyone.
 
 ## Stack
 
@@ -129,6 +140,8 @@ Without `BLOB_READ_WRITE_TOKEN`, photos are saved to `public/uploads/` in develo
 - Classes and tags: [src/lib/tags.ts](src/lib/tags.ts) — don't rename an `id` that posts already use
 - Rate limits and length limits: [src/app/actions.ts](src/app/actions.ts)
 - Settings and their defaults: [src/lib/settings.ts](src/lib/settings.ts)
+- Roles and sessions: [src/lib/identity.ts](src/lib/identity.ts), [src/lib/admin-password.ts](src/lib/admin-password.ts)
+- Badge holders: [src/lib/members.ts](src/lib/members.ts), badge colors in [src/lib/member-types.ts](src/lib/member-types.ts)
 - Filter, duplicate, and link rules: [src/lib/moderation.ts](src/lib/moderation.ts)
 - Colors: [src/app/globals.css](src/app/globals.css)
 

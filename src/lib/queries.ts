@@ -22,6 +22,8 @@ export type QuestionRow = {
   edited_at: Date | null;
   status: PostStatus;
   status_reason: string | null;
+  badge_title: string | null;
+  badge_color: string | null;
   is_mine: boolean;
   voted: boolean;
 };
@@ -36,24 +38,26 @@ export type AnswerRow = {
   edited_at: Date | null;
   status: PostStatus;
   status_reason: string | null;
+  badge_title: string | null;
+  badge_color: string | null;
   is_mine: boolean;
   voted: boolean;
 };
 
 /** Posts everyone can see, plus your own held posts (and everything, for admins). */
-function visible(sql: postgres.Sql, type: "q" | "a", visitor: string, admin: boolean) {
+function visible(sql: postgres.Sql, type: "q" | "a", visitor: string, staff: boolean, memberId?: number | null) {
   const row = sql(type);
-  if (admin) return sql`TRUE`;
-  return sql`(${row}.status = 'visible' OR ${mine(sql, type, visitor)})`;
+  if (staff) return sql`TRUE`;
+  return sql`(${row}.status = 'visible' OR ${mine(sql, type, visitor, memberId)})`;
 }
 
 /** Whether the visitor wrote the post (alias `q`/`a`) or unlocked it with a recovery code. */
-function mine(sql: postgres.Sql, type: "q" | "a", visitor: string) {
+function mine(sql: postgres.Sql, type: "q" | "a", visitor: string, memberId?: number | null) {
   const row = sql(type);
   return sql`(${row}.owner_id = ${visitor} OR EXISTS (
     SELECT 1 FROM claims c
     WHERE c.target_type = ${type} AND c.target_id = ${row}.id AND c.visitor_id = ${visitor}
-  ))`;
+  ) ${memberId ? sql`OR ${row}.member_id = ${memberId}` : sql``})`;
 }
 
 export async function listQuestions(opts: {
@@ -62,6 +66,7 @@ export async function listQuestions(opts: {
   search?: string;
   page: number;
   visitorId: string | null;
+  memberId?: number | null;
   admin?: boolean;
 }): Promise<{ questions: QuestionRow[]; hasMore: boolean }> {
   const sql = await db();
@@ -78,12 +83,13 @@ export async function listQuestions(opts: {
   const rows = await sql<QuestionRow[]>`
     SELECT q.id, q.title, q.body, q.tag, q.author, q.image_url, q.score,
            q.answer_count, q.accepted_answer_id, q.created_at, q.edited_at,
-           q.status, q.status_reason,
-           ${mine(sql, "q", visitor)} AS is_mine,
+           q.status, q.status_reason, m.title AS badge_title, m.color AS badge_color,
+           ${mine(sql, "q", visitor, opts.memberId)} AS is_mine,
            EXISTS (SELECT 1 FROM votes v WHERE v.target_type = 'q'
                    AND v.target_id = q.id AND v.voter_id = ${visitor}) AS voted
     FROM questions q
-    WHERE ${visible(sql, "q", visitor, !!opts.admin)}
+    LEFT JOIN members m ON m.id = q.member_id
+    WHERE ${visible(sql, "q", visitor, !!opts.admin, opts.memberId)}
       ${opts.tag ? sql`AND q.tag = ${opts.tag}` : sql``}
       ${opts.sort === "unanswered" ? sql`AND q.answer_count = 0` : sql``}
       ${pattern ? sql`AND (q.title ILIKE ${pattern} OR q.body ILIKE ${pattern})` : sql``}
@@ -96,30 +102,34 @@ export async function listQuestions(opts: {
 export async function getQuestion(
   id: number,
   visitorId: string | null,
-  admin = false,
+  staff = false,
+  memberId: number | null = null,
 ): Promise<{ question: QuestionRow; answers: AnswerRow[] } | null> {
   const sql = await db();
   const visitor = visitorId ?? "";
   const [question] = await sql<QuestionRow[]>`
     SELECT q.id, q.title, q.body, q.tag, q.author, q.image_url, q.score,
            q.answer_count, q.accepted_answer_id, q.created_at, q.edited_at,
-           q.status, q.status_reason,
-           ${mine(sql, "q", visitor)} AS is_mine,
+           q.status, q.status_reason, m.title AS badge_title, m.color AS badge_color,
+           ${mine(sql, "q", visitor, memberId)} AS is_mine,
            EXISTS (SELECT 1 FROM votes v WHERE v.target_type = 'q'
                    AND v.target_id = q.id AND v.voter_id = ${visitor}) AS voted
-    FROM questions q WHERE q.id = ${id} AND ${visible(sql, "q", visitor, admin)}
+    FROM questions q
+    LEFT JOIN members m ON m.id = q.member_id
+    WHERE q.id = ${id} AND ${visible(sql, "q", visitor, staff, memberId)}
   `;
   if (!question) return null;
 
   // Accepted answer first, then highest score, then oldest.
   const answers = await sql<AnswerRow[]>`
     SELECT a.id, a.body, a.author, a.image_url, a.score, a.created_at, a.edited_at,
-           a.status, a.status_reason,
-           ${mine(sql, "a", visitor)} AS is_mine,
+           a.status, a.status_reason, m.title AS badge_title, m.color AS badge_color,
+           ${mine(sql, "a", visitor, memberId)} AS is_mine,
            EXISTS (SELECT 1 FROM votes v WHERE v.target_type = 'a'
                    AND v.target_id = a.id AND v.voter_id = ${visitor}) AS voted
     FROM answers a
-    WHERE a.question_id = ${id} AND ${visible(sql, "a", visitor, admin)}
+    LEFT JOIN members m ON m.id = a.member_id
+    WHERE a.question_id = ${id} AND ${visible(sql, "a", visitor, staff, memberId)}
     ORDER BY (a.id = ${question.accepted_answer_id ?? 0}) DESC, a.score DESC, a.created_at ASC
   `;
   return { question, answers };

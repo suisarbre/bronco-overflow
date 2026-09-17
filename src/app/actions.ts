@@ -9,10 +9,11 @@ import { db } from "@/lib/db";
 import {
   getIpHash,
   getOrCreateVisitorId,
-  isAdmin,
+  isStaff,
   logInAdmin,
   logOutAdmin,
 } from "@/lib/identity";
+import { getMember, logInMember, type Member } from "@/lib/members";
 import { isDuplicate, moderate } from "@/lib/moderation";
 import { notifyDiscord } from "@/lib/notify";
 import { REPORT_REASONS } from "@/lib/report-reasons";
@@ -98,11 +99,25 @@ function answerError(body: string, hasImage: boolean): string | null {
 // ---------------------------------------------------------------------------
 // Rate limits
 
-type Who = { visitorId: string; ipHash: string };
+type Who = { visitorId: string; ipHash: string; member: Member | null };
 type ActivityKind = "post" | "upload" | "edit" | "login_fail" | "code_fail" | "report";
 
 async function whoAmI(): Promise<Who> {
-  return { visitorId: await getOrCreateVisitorId(), ipHash: await getIpHash() };
+  return {
+    visitorId: await getOrCreateVisitorId(),
+    ipHash: await getIpHash(),
+    member: await getMember(),
+  };
+}
+
+// Badge holders a tutor vouched for get more room before the spam limits bite.
+const RELAXED = 5;
+
+function postingBlocked(who: Who, activity: Activity): boolean {
+  if (who.member?.relaxed_limits) {
+    return activity.posts_by_visitor >= MAX_POSTS_PER_VISITOR * RELAXED;
+  }
+  return activity.posts_by_visitor >= MAX_POSTS_PER_VISITOR || activity.posts_by_ip >= MAX_POSTS_PER_IP;
 }
 
 async function logActivity(kind: ActivityKind, who: Pick<Who, "ipHash"> & { visitorId?: string }, bytes = 0) {
@@ -157,7 +172,7 @@ async function storeImage(
   if (!image) return { url: null };
   const problem = await checkImage(image);
   if (problem) return { error: problem };
-  if (activity.uploads_by_ip >= MAX_IMAGES_PER_IP) {
+  if (!who.member?.relaxed_limits && activity.uploads_by_ip >= MAX_IMAGES_PER_IP) {
     return { error: "That's a lot of photos from your network — post without one or try again later." };
   }
   if (activity.upload_bytes_today + image.size > MAX_IMAGE_MB_PER_DAY * 1024 * 1024) {
@@ -180,12 +195,16 @@ const CODE_LENGTH = 12; // 3 groups of 4, 60 bits
 
 type PostType = "q" | "a";
 
-/** SQL condition: this visitor wrote the post, or unlocked it with its recovery code. */
-function ownedBy(sql: postgres.Sql, type: PostType, id: number, visitorId: string) {
+/**
+ * SQL condition: this visitor wrote the post, unlocked it with its recovery code,
+ * or is signed in as the badge holder who posted it.
+ */
+function ownedBy(sql: postgres.Sql, type: PostType, id: number, visitorId: string, memberId?: number | null) {
   return sql`(
     owner_id = ${visitorId}
     OR EXISTS (SELECT 1 FROM claims c
                WHERE c.target_type = ${type} AND c.target_id = ${id} AND c.visitor_id = ${visitorId})
+    ${memberId ? sql`OR member_id = ${memberId}` : sql``}
   )`;
 }
 
@@ -214,9 +233,7 @@ export async function createQuestion(_prev: FormState, form: FormData): Promise<
 
   const who = await whoAmI();
   const activity = await recentActivity(who);
-  if (activity.posts_by_visitor >= MAX_POSTS_PER_VISITOR || activity.posts_by_ip >= MAX_POSTS_PER_IP) {
-    return { error: SLOW_DOWN };
-  }
+  if (postingBlocked(who, activity)) return { error: SLOW_DOWN };
   if (await isDuplicate("questions", "title", fields.title, who.visitorId, who.ipHash)) {
     return { error: ALREADY_POSTED };
   }
@@ -237,20 +254,26 @@ export async function createQuestion(_prev: FormState, form: FormData): Promise<
   const stored = await storeImage(image, who, activity);
   if ("error" in stored) return { error: stored.error };
 
-  const pending = verdict.action === "review";
+  const pending = verdict.action === "review" && !who.member?.skip_review;
   const code = newCode();
   const sql = await db();
   const [row] = await sql<{ id: number }[]>`
-    INSERT INTO questions (title, body, tag, author, image_url, owner_id, recovery_hash, ip_hash,
-                           status, status_reason)
+    INSERT INTO questions (title, body, tag, author, image_url, owner_id, member_id, recovery_hash,
+                           ip_hash, status, status_reason)
     VALUES (${title}, ${body}, ${fields.tag}, ${nickname}, ${stored.url}, ${who.visitorId},
-            ${hashCode(code)}, ${who.ipHash},
+            ${who.member?.id ?? null}, ${hashCode(code)}, ${who.ipHash},
             ${pending ? "pending" : "visible"}, ${pending ? verdict.reason : null})
     RETURNING id
   `;
   await logActivity("post", who);
   if (pending || settings.notifyAllPosts) {
-    after(notifyDiscord(pending ? `Question waiting for review (${verdict.reason})` : "New question", title, `/q/${row.id}`));
+    after(
+      notifyDiscord(
+        pending && verdict.action === "review" ? `Question waiting for review (${verdict.reason})` : "New question",
+        title,
+        `/q/${row.id}`,
+      ),
+    );
   }
   revalidatePath("/");
   return { ok: true, id: row.id, code, pending };
@@ -270,9 +293,7 @@ export async function createAnswer(_prev: FormState, form: FormData): Promise<Fo
 
   const who = await whoAmI();
   const activity = await recentActivity(who);
-  if (activity.posts_by_visitor >= MAX_POSTS_PER_VISITOR || activity.posts_by_ip >= MAX_POSTS_PER_IP) {
-    return { error: SLOW_DOWN };
-  }
+  if (postingBlocked(who, activity)) return { error: SLOW_DOWN };
   if (await isDuplicate("answers", "body", body, who.visitorId, who.ipHash)) {
     return { error: ALREADY_POSTED };
   }
@@ -289,15 +310,16 @@ export async function createAnswer(_prev: FormState, form: FormData): Promise<Fo
   const stored = await storeImage(image, who, activity);
   if ("error" in stored) return { error: stored.error };
 
-  const pending = verdict.action === "review";
+  const pending = verdict.action === "review" && !who.member?.skip_review;
   const code = newCode();
   const sql = await db();
   const inserted = await sql.begin(async (tx) => {
     const [row] = await tx<{ id: number }[]>`
-      INSERT INTO answers (question_id, body, author, image_url, owner_id, recovery_hash, ip_hash,
-                           status, status_reason)
+      INSERT INTO answers (question_id, body, author, image_url, owner_id, member_id, recovery_hash,
+                           ip_hash, status, status_reason)
       SELECT ${questionId}::int, ${cleanBody}::text, ${nickname}::text, ${stored.url}::text,
-             ${who.visitorId}::text, ${hashCode(code)}::text, ${who.ipHash}::text,
+             ${who.visitorId}::text, ${who.member?.id ?? null}::int, ${hashCode(code)}::text,
+             ${who.ipHash}::text,
              ${pending ? "pending" : "visible"}::text, ${pending ? verdict.reason : null}::text
       WHERE EXISTS (SELECT 1 FROM questions WHERE id = ${questionId})
       RETURNING id
@@ -312,7 +334,13 @@ export async function createAnswer(_prev: FormState, form: FormData): Promise<Fo
 
   await logActivity("post", who);
   if (pending || settings.notifyAllPosts) {
-    after(notifyDiscord(pending ? `Answer waiting for review (${verdict.reason})` : "New answer", cleanBody, `/q/${questionId}`));
+    after(
+      notifyDiscord(
+        pending && verdict.action === "review" ? `Answer waiting for review (${verdict.reason})` : "New answer",
+        cleanBody,
+        `/q/${questionId}`,
+      ),
+    );
   }
   revalidatePath("/");
   refresh();
@@ -351,7 +379,7 @@ async function editPost(
   const sql = await db();
   const table = sql(type === "q" ? "questions" : "answers");
   const [current] = await sql<{ image_url: string | null }[]>`
-    SELECT image_url FROM ${table} WHERE id = ${id} AND ${ownedBy(sql, type, id, who.visitorId)}
+    SELECT image_url FROM ${table} WHERE id = ${id} AND ${ownedBy(sql, type, id, who.visitorId, who.member?.id)}
   `;
   if (!current) return { error: "You can't edit this post from this browser." };
 
@@ -367,7 +395,7 @@ async function editPost(
 
   const oldUrl = await sql.begin(async (tx) => {
     const [locked] = await tx<{ image_url: string | null }[]>`
-      SELECT image_url FROM ${table} WHERE id = ${id} AND ${ownedBy(sql, type, id, who.visitorId)}
+      SELECT image_url FROM ${table} WHERE id = ${id} AND ${ownedBy(sql, type, id, who.visitorId, who.member?.id)}
       FOR UPDATE
     `;
     if (!locked) return undefined;
@@ -508,6 +536,12 @@ export async function recoverPost(_prev: FormState, form: FormData): Promise<For
     return { error: "Recovery codes are 12 letters and numbers, like ABCD-EFGH-JKMN." };
   }
 
+  const member = await logInMember(code);
+  if (member) {
+    revalidatePath("/");
+    redirect("/");
+  }
+
   const sql = await db();
   const hash = hashCode(code);
   const [post] = await sql<{ type: PostType; id: number; question_id: number }[]>`
@@ -518,7 +552,7 @@ export async function recoverPost(_prev: FormState, form: FormData): Promise<For
   `;
   if (!post) {
     await logActivity("code_fail", { ipHash });
-    return { error: "That code doesn't match any post. It may have been deleted." };
+    return { error: "That code doesn't match a post or a badge. It may have been deleted." };
   }
 
   const visitorId = await getOrCreateVisitorId();
@@ -574,12 +608,12 @@ export async function toggleVote(type: PostType, id: number): Promise<void> {
 /** The question's author can mark (or unmark) one answer as the one that solved it. */
 export async function toggleAccepted(questionId: number, answerId: number): Promise<void> {
   if (!isId(questionId) || !isId(answerId)) return;
-  const visitorId = await getOrCreateVisitorId();
+  const { visitorId, member } = await whoAmI();
   const sql = await db();
   await sql`
     UPDATE questions
     SET accepted_answer_id = CASE WHEN accepted_answer_id = ${answerId}::int THEN NULL ELSE ${answerId}::int END
-    WHERE id = ${questionId} AND ${ownedBy(sql, "q", questionId, visitorId)}
+    WHERE id = ${questionId} AND ${ownedBy(sql, "q", questionId, visitorId, member?.id)}
       AND EXISTS (SELECT 1 FROM answers WHERE id = ${answerId} AND question_id = ${questionId})
   `;
   revalidatePath("/");
@@ -589,13 +623,13 @@ export async function toggleAccepted(questionId: number, answerId: number): Prom
 /** Authors can delete their own posts; the admin can delete anything. */
 export async function deleteQuestion(id: number): Promise<void> {
   if (!isId(id)) return;
-  const admin = await isAdmin();
-  const visitorId = await getOrCreateVisitorId();
+  const staff = await isStaff();
+  const { visitorId, member } = await whoAmI();
   const sql = await db();
   const images = await sql.begin(async (tx) => {
     const [row] = await tx<{ image_url: string | null }[]>`
       SELECT image_url FROM questions
-      WHERE id = ${id} AND (${admin}::boolean OR ${ownedBy(sql, "q", id, visitorId)})
+      WHERE id = ${id} AND (${staff}::boolean OR ${ownedBy(sql, "q", id, visitorId, member?.id)})
       FOR UPDATE
     `;
     if (!row) return null;
@@ -625,13 +659,13 @@ export async function deleteQuestion(id: number): Promise<void> {
 
 export async function deleteAnswer(id: number): Promise<void> {
   if (!isId(id)) return;
-  const admin = await isAdmin();
-  const visitorId = await getOrCreateVisitorId();
+  const staff = await isStaff();
+  const { visitorId, member } = await whoAmI();
   const sql = await db();
   const imageUrl = await sql.begin(async (tx) => {
     const [row] = await tx<{ question_id: number; image_url: string | null }[]>`
       DELETE FROM answers
-      WHERE id = ${id} AND (${admin}::boolean OR ${ownedBy(sql, "a", id, visitorId)})
+      WHERE id = ${id} AND (${staff}::boolean OR ${ownedBy(sql, "a", id, visitorId, member?.id)})
       RETURNING question_id, image_url
     `;
     if (!row) return null;
