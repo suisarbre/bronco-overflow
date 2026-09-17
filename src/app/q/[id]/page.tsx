@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 import { AnswerForm } from "@/components/AnswerForm";
+import { EditButton, EditForm, Editable } from "@/components/EditPost";
 import { AcceptButton, DeleteButton } from "@/components/PostControls";
 import { RichText } from "@/components/RichText";
 import { TagBadge } from "@/components/TagBadge";
@@ -14,7 +15,7 @@ import { getQuestion } from "@/lib/queries";
 // Shared by generateMetadata and the page so the DB is queried once per request.
 const load = cache(async (rawId: string) => {
   const id = Number(rawId);
-  if (!Number.isInteger(id) || id <= 0) return null;
+  if (!Number.isSafeInteger(id) || id <= 0 || id > 2_147_483_647) return null;
   return getQuestion(id, await getVisitorId());
 });
 
@@ -37,13 +38,19 @@ function Attachment({ url }: { url: string }) {
   );
 }
 
-function Byline({ author, date }: { author: string; date: Date }) {
+function Byline({ author, date, edited }: { author: string; date: Date; edited: Date | null }) {
   return (
     <span className="text-sm text-muted">
       {author || "Anonymous"} ·{" "}
       <time dateTime={date.toISOString()} title={date.toLocaleString("en-US")}>
         {timeAgo(date)}
       </time>
+      {edited && (
+        <span title={`Edited ${edited.toLocaleString("en-US")}`}>
+          {" "}
+          · edited
+        </span>
+      )}
     </span>
   );
 }
@@ -61,24 +68,29 @@ export default async function QuestionPage({ params }: PageProps<"/q/[id]">) {
       </Link>
 
       <article className="space-y-4 rounded-2xl border border-line bg-card p-4 sm:p-6">
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <TagBadge tag={q.tag} />
-          {q.accepted_answer_id && (
-            <span className="rounded-full bg-brand px-2 py-0.5 font-medium text-on-brand">✓ Solved</span>
-          )}
-        </div>
-        <h1 className="text-2xl leading-tight font-bold break-words">{q.title}</h1>
-        {q.body && <RichText text={q.body} />}
-        {q.image_url && <Attachment url={q.image_url} />}
-        <div className="flex flex-wrap items-center gap-3 border-t border-line pt-3">
-          <VoteButton type="q" id={q.id} score={q.score} voted={q.voted} />
-          <Byline author={q.author} date={q.created_at} />
-          {(q.is_mine || admin) && (
-            <span className="ml-auto">
-              <DeleteButton type="q" id={q.id} />
+        <Editable
+          form={
+            <EditForm type="q" id={q.id} title={q.title} body={q.body} tag={q.tag} imageUrl={q.image_url} />
+          }
+        >
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <TagBadge tag={q.tag} />
+            {q.accepted_answer_id && (
+              <span className="rounded-full bg-brand px-2 py-0.5 font-medium text-on-brand">✓ Solved</span>
+            )}
+          </div>
+          <h1 className="text-2xl leading-tight font-bold break-words">{q.title}</h1>
+          {q.body && <RichText text={q.body} />}
+          {q.image_url && <Attachment url={q.image_url} />}
+          <div className="flex flex-wrap items-center gap-3 border-t border-line pt-3">
+            <VoteButton type="q" id={q.id} score={q.score} voted={q.voted} />
+            <Byline author={q.author} date={q.created_at} edited={q.edited_at} />
+            <span className="ml-auto flex gap-3">
+              {q.is_mine && <EditButton />}
+              {(q.is_mine || admin) && <DeleteButton type="q" id={q.id} />}
             </span>
-          )}
-        </div>
+          </div>
+        </Editable>
       </article>
 
       <section className="space-y-3">
@@ -91,27 +103,41 @@ export default async function QuestionPage({ params }: PageProps<"/q/[id]">) {
           return (
             <article
               key={a.id}
-              className={`space-y-3 rounded-2xl border bg-card p-4 sm:p-5 ${
+              id={`answer-${a.id}`}
+              className={`scroll-mt-4 space-y-3 rounded-2xl border bg-card p-4 sm:p-5 ${
                 accepted ? "border-brand ring-1 ring-brand" : "border-line"
               }`}
             >
-              {accepted && <p className="text-sm font-semibold text-brand">✓ Marked as the solution by the asker</p>}
-              {a.body && <RichText text={a.body} />}
-              {a.image_url && <Attachment url={a.image_url} />}
-              <div className="flex flex-wrap items-center gap-3">
-                <VoteButton type="a" id={a.id} score={a.score} voted={a.voted} />
-                <Byline author={a.author} date={a.created_at} />
-                <span className="ml-auto flex gap-3">
-                  {q.is_mine && <AcceptButton questionId={q.id} answerId={a.id} accepted={accepted} />}
-                  {(a.is_mine || admin) && <DeleteButton type="a" id={a.id} />}
-                </span>
-              </div>
+              <Editable form={<EditForm type="a" id={a.id} body={a.body} imageUrl={a.image_url} />}>
+                {accepted && (
+                  <p className="text-sm font-semibold text-brand">✓ Marked as the solution by the asker</p>
+                )}
+                {a.body && <RichText text={a.body} />}
+                {a.image_url && <Attachment url={a.image_url} />}
+                <div className="flex flex-wrap items-center gap-3">
+                  <VoteButton type="a" id={a.id} score={a.score} voted={a.voted} />
+                  <Byline author={a.author} date={a.created_at} edited={a.edited_at} />
+                  <span className="ml-auto flex gap-3">
+                    {q.is_mine && <AcceptButton questionId={q.id} answerId={a.id} accepted={accepted} />}
+                    {a.is_mine && <EditButton />}
+                    {(a.is_mine || admin) && <DeleteButton type="a" id={a.id} />}
+                  </span>
+                </div>
+              </Editable>
             </article>
           );
         })}
       </section>
 
       <AnswerForm questionId={q.id} />
+
+      <p className="text-center text-sm text-muted">
+        Posted here from another browser?{" "}
+        <Link href="/recover" className="text-link underline-offset-2 hover:underline">
+          Use your recovery code
+        </Link>{" "}
+        to edit or delete it.
+      </p>
     </div>
   );
 }

@@ -4,7 +4,8 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { del, put } from "@vercel/blob";
 
-export const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
+// The browser resizes photos to ~1600px WebP first, which is normally well under 1 MB.
+export const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 
 const EXTENSIONS: Record<string, string> = {
   "image/jpeg": "jpg",
@@ -13,10 +14,21 @@ const EXTENSIONS: Record<string, string> = {
   "image/gif": "gif",
 };
 
+/** Detects the real image type from the file's first bytes; the browser-supplied type can't be trusted. */
+function sniff(head: Uint8Array): string | null {
+  const ascii = (from: number, to: number) => String.fromCharCode(...head.subarray(from, to));
+  if (head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff) return "image/jpeg";
+  if (head[0] === 0x89 && ascii(1, 4) === "PNG") return "image/png";
+  if (ascii(0, 4) === "RIFF" && ascii(8, 12) === "WEBP") return "image/webp";
+  if (ascii(0, 6) === "GIF87a" || ascii(0, 6) === "GIF89a") return "image/gif";
+  return null;
+}
+
 /** Returns an error message if the upload isn't acceptable, otherwise null. */
-export function checkImage(file: File): string | null {
-  if (!EXTENSIONS[file.type]) return "Images must be JPG, PNG, WebP, or GIF.";
-  if (file.size > MAX_IMAGE_BYTES) return "Image is too large (max 3 MB).";
+export async function checkImage(file: File): Promise<string | null> {
+  if (file.size > MAX_IMAGE_BYTES) return "Image is too large (max 2 MB).";
+  const type = sniff(new Uint8Array(await file.slice(0, 12).arrayBuffer()));
+  if (!type || type !== file.type) return "Images must be JPG, PNG, WebP, or GIF.";
   return null;
 }
 

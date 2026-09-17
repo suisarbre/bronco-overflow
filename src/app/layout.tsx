@@ -54,7 +54,12 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         </header>
         <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-5">{children}</main>
         <footer className="mx-auto w-full max-w-3xl px-4 py-6 text-center text-xs text-muted">
-          Run by CS tutors at Cal Poly Pomona. Be kind, don&apos;t post exam answers or personal info.
+          <p>Run by CS tutors at Cal Poly Pomona. Be kind, don&apos;t post exam answers or personal info.</p>
+          <p className="mt-1">
+            <Link href="/recover" className="underline-offset-2 hover:underline">
+              Recover a post with your code
+            </Link>
+          </p>
         </footer>
       </body>
     </html>

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 const MAX_SIDE = 1600;
-const MAX_BYTES = 3 * 1024 * 1024;
+const MAX_BYTES = 2 * 1024 * 1024;
 
 function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: number) {
   return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality));
@@ -64,7 +64,7 @@ export function ImagePicker({
     try {
       const small = await shrink(picked);
       if (small.size > MAX_BYTES) {
-        setError("That image is too large (max 3 MB).");
+        setError("That image is too large (max 2 MB).");
         onChange(null);
       } else {
         onChange(small);

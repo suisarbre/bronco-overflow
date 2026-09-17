@@ -1,4 +1,5 @@
 import "server-only";
+import type postgres from "postgres";
 import { db } from "./db";
 
 export const SORTS = ["hot", "new", "unanswered"] as const;
@@ -16,6 +17,7 @@ export type QuestionRow = {
   answer_count: number;
   accepted_answer_id: number | null;
   created_at: Date;
+  edited_at: Date | null;
   is_mine: boolean;
   voted: boolean;
 };
@@ -27,9 +29,19 @@ export type AnswerRow = {
   image_url: string | null;
   score: number;
   created_at: Date;
+  edited_at: Date | null;
   is_mine: boolean;
   voted: boolean;
 };
+
+/** Whether the visitor wrote the post (alias `q`/`a`) or unlocked it with a recovery code. */
+function mine(sql: postgres.Sql, type: "q" | "a", visitor: string) {
+  const row = sql(type);
+  return sql`(${row}.owner_id = ${visitor} OR EXISTS (
+    SELECT 1 FROM claims c
+    WHERE c.target_type = ${type} AND c.target_id = ${row}.id AND c.visitor_id = ${visitor}
+  ))`;
+}
 
 export async function listQuestions(opts: {
   sort: Sort;
@@ -51,8 +63,8 @@ export async function listQuestions(opts: {
 
   const rows = await sql<QuestionRow[]>`
     SELECT q.id, q.title, q.body, q.tag, q.author, q.image_url, q.score,
-           q.answer_count, q.accepted_answer_id, q.created_at,
-           (q.owner_id = ${visitor}) AS is_mine,
+           q.answer_count, q.accepted_answer_id, q.created_at, q.edited_at,
+           ${mine(sql, "q", visitor)} AS is_mine,
            EXISTS (SELECT 1 FROM votes v WHERE v.target_type = 'q'
                    AND v.target_id = q.id AND v.voter_id = ${visitor}) AS voted
     FROM questions q
@@ -74,8 +86,8 @@ export async function getQuestion(
   const visitor = visitorId ?? "";
   const [question] = await sql<QuestionRow[]>`
     SELECT q.id, q.title, q.body, q.tag, q.author, q.image_url, q.score,
-           q.answer_count, q.accepted_answer_id, q.created_at,
-           (q.owner_id = ${visitor}) AS is_mine,
+           q.answer_count, q.accepted_answer_id, q.created_at, q.edited_at,
+           ${mine(sql, "q", visitor)} AS is_mine,
            EXISTS (SELECT 1 FROM votes v WHERE v.target_type = 'q'
                    AND v.target_id = q.id AND v.voter_id = ${visitor}) AS voted
     FROM questions q WHERE q.id = ${id}
@@ -84,8 +96,8 @@ export async function getQuestion(
 
   // Accepted answer first, then highest score, then oldest.
   const answers = await sql<AnswerRow[]>`
-    SELECT a.id, a.body, a.author, a.image_url, a.score, a.created_at,
-           (a.owner_id = ${visitor}) AS is_mine,
+    SELECT a.id, a.body, a.author, a.image_url, a.score, a.created_at, a.edited_at,
+           ${mine(sql, "a", visitor)} AS is_mine,
            EXISTS (SELECT 1 FROM votes v WHERE v.target_type = 'a'
                    AND v.target_id = a.id AND v.voter_id = ${visitor}) AS voted
     FROM answers a
