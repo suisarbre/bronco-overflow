@@ -61,10 +61,10 @@ function Byline({
       <MemberBadge title={badge.title} color={badge.color} />
       {asker && (
         <span
-          className="rounded-full bg-subtle px-2 py-0.5 text-xs font-semibold text-muted"
-          title="Written by whoever asked the question"
+          className="rounded-full bg-brand px-2 py-0.5 text-xs font-bold tracking-wide text-on-brand"
+          title="OP — posted by the person who asked this question"
         >
-          Asker
+          OP
         </span>
       )}
       {author || "Anonymous"} ·{" "}

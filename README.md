@@ -1,4 +1,4 @@
-# CPP CS Q&A
+# Bronco Overflow
 
 An anonymous question board for Cal Poly Pomona CS tutoring. Students scan a QR code, ask a question,
 and answer each other — no account, no login.
@@ -14,7 +14,7 @@ deliberately small. See [Contributing](#contributing) before adding anything.
 - **Text**: links become clickable, ```` ``` ```` fences render as code blocks, `` `x` `` as inline code.
   Everything else is plain text.
 - **Answers**: upvotes, and the asker can mark one answer as the solution. An answer written by the person
-  who asked is labeled "Asker".
+  who asked is labeled "OP".
 - **Pinning**: tutors can pin a question to the top of the feed, or an answer to the top of a question.
 - **Ordering**: pinned first, then — for questions — "Hot" (upvotes and answers, decaying with age), or plain
   newest. Answers go pinned, accepted, most upvoted, oldest. "Newest" and "Unanswered" ignore upvotes.
@@ -114,7 +114,7 @@ the Vercel dashboard.
 
 1. **Push to GitHub** (a private repo is fine):
    ```bash
-   git remote add origin https://github.com/<you>/cpp-cs-qa.git
+   git remote add origin https://github.com/<you>/bronco-overflow.git
    git push -u origin main
    ```
 2. **Create the Vercel project**: [vercel.com/new](https://vercel.com/new) → import the repo → Deploy.

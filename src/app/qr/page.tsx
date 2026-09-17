@@ -22,7 +22,8 @@ export default async function QrPage() {
   return (
     <div className="mx-auto max-w-md space-y-5 rounded-2xl bg-white p-8 text-center text-[#16201a] print:border-0 print:shadow-none">
       <p className="text-sm font-semibold tracking-widest text-[#1e4d2b] uppercase">CS Tutoring · Cal Poly Pomona</p>
-      <h1 className="text-3xl leading-tight font-bold">Stuck on something? Ask here.</h1>
+      <h1 className="text-3xl leading-tight font-bold">Bronco Overflow</h1>
+      <p className="text-lg font-medium">Stuck on something? Ask here.</p>
       <div className="mx-auto w-64" dangerouslySetInnerHTML={{ __html: svg }} />
       <p className="text-sm text-[#5d6a61]">
         Scan to ask or answer CS questions — anonymous, no login.

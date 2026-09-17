@@ -18,10 +18,10 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "CPP CS Q&A",
-    template: "%s · CPP CS Q&A",
+    default: "Bronco Overflow",
+    template: "%s · Bronco Overflow",
   },
-  description: "Ask and answer computer science questions with Cal Poly Pomona CS students and tutors.",
+  description: "Bronco Overflow — ask and answer CS questions with Cal Poly Pomona students and tutors.",
 };
 
 export const viewport: Viewport = {
@@ -43,7 +43,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               <span className="grid h-7 w-7 place-items-center rounded-md bg-accent text-sm text-on-accent">
                 {"</>"}
               </span>
-              CPP CS Q&amp;A
+              Bronco Overflow
             </Link>
             {role && (
               <span className="flex items-center gap-2 text-xs">
