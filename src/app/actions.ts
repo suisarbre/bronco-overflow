@@ -662,6 +662,11 @@ export async function deleteQuestion(id: number): Promise<void> {
       WHERE (target_type = 'q' AND target_id = ${id})
          OR (target_type = 'a' AND target_id = ANY(${answerIds}::int[]))
     `;
+    await tx`
+      DELETE FROM reports
+      WHERE (target_type = 'q' AND target_id = ${id})
+         OR (target_type = 'a' AND target_id = ANY(${answerIds}::int[]))
+    `;
     // Answers go with it via ON DELETE CASCADE.
     await tx`DELETE FROM questions WHERE id = ${id}`;
     return [row.image_url, ...answers.map((a) => a.image_url)];
@@ -686,12 +691,14 @@ export async function deleteAnswer(id: number): Promise<void> {
     if (!row) return null;
     await tx`
       UPDATE questions
-      SET answer_count = answer_count - 1,
-          accepted_answer_id = NULLIF(accepted_answer_id, ${id}::int)
+      SET accepted_answer_id = NULLIF(accepted_answer_id, ${id}::int)
       WHERE id = ${row.question_id}
     `;
+    // Recount rather than subtract: held and hidden answers were never counted.
+    await recountAnswers(tx, row.question_id);
     await tx`DELETE FROM votes WHERE target_type = 'a' AND target_id = ${id}`;
     await tx`DELETE FROM claims WHERE target_type = 'a' AND target_id = ${id}`;
+    await tx`DELETE FROM reports WHERE target_type = 'a' AND target_id = ${id}`;
     return row.image_url;
   });
   await deleteImages([imageUrl]);

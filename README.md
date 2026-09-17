@@ -154,6 +154,36 @@ Without `BLOB_READ_WRITE_TOKEN`, photos are saved to `public/uploads/` in develo
 - Filter, duplicate, and link rules: [src/lib/moderation.ts](src/lib/moderation.ts)
 - Colors: [src/app/globals.css](src/app/globals.css)
 
+## Updating this later
+
+Things that have bitten us, or would:
+
+- **Adding a column.** `CREATE TABLE IF NOT EXISTS` skips a database that already exists, so a new column
+  also needs an `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` line at the bottom of
+  [src/lib/db.ts](src/lib/db.ts). Without it the live site breaks and your local one looks fine.
+- **Answer counts.** `questions.answer_count` counts *visible* answers only. Always recount
+  (`recountAnswers`) instead of adding or subtracting one — held and hidden answers were never counted, and
+  subtracting took the count negative.
+- **Deleting a post** means cleaning up its votes, claims, reports, and uploaded images. Grep `deleteQuestion`
+  for the full list.
+- **Server-only modules.** Anything importing `server-only`, `next/headers`, or the database can't be pulled
+  into a `"use client"` file — the build fails with a confusing Pages Router error. Shared constants and
+  types live in their own module ([src/lib/member-types.ts](src/lib/member-types.ts),
+  [src/lib/settings.ts](src/lib/settings.ts)) for exactly this reason.
+- **`"use server"` files can only export async functions.** Constants go somewhere else
+  ([src/lib/report-reasons.ts](src/lib/report-reasons.ts) exists because of this).
+- **Secrets live in the database** (`secrets` table): the session key, the IP-hash salt, and the tutor
+  password. Swapping in a different database signs everyone out, resets IP-based rate limits, and
+  invalidates badge codes. Back it up before migrating.
+- **Timestamps render on the server**, which runs in UTC. Use `campusTime()` from
+  [src/lib/format.ts](src/lib/format.ts) so people see Pomona time.
+- **Adding a badge color** takes two edits: the list in `member-types.ts` and the class map in
+  [src/components/MemberBadge.tsx](src/components/MemberBadge.tsx). An unknown color falls back to green.
+- **Don't rename a tag `id`** in `tags.ts` once posts use it; the id is what's stored.
+- **Scale.** Search is `ILIKE '%…%'` and "Hot" sorts in SQL over the whole table. Fine for thousands of
+  questions, worth revisiting around tens of thousands.
+- **Never put anything secret in a `NEXT_PUBLIC_*` variable** — those are compiled into the browser bundle.
+
 ## Contributing
 
 The goal is a board that a tutor can forget about for a month and that never sends anyone a bill. Small,

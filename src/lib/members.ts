@@ -1,6 +1,7 @@
 import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
+import { cache } from "react";
 import { hashCode, newCode } from "./codes";
 import { db } from "./db";
 import { type BadgeColor, type Member } from "./member-types";
@@ -32,7 +33,7 @@ async function verify(cookie: string): Promise<{ id: number; version: number } |
 }
 
 /** The signed-in member for this browser, if the code is still current. */
-export async function getMember(): Promise<Member | null> {
+export const getMember = cache(async function getMember(): Promise<Member | null> {
   const cookie = (await cookies()).get(MEMBER_COOKIE)?.value;
   if (!cookie) return null;
   const signed = await verify(cookie);
@@ -45,7 +46,7 @@ export async function getMember(): Promise<Member | null> {
     WHERE id = ${signed.id} AND active AND code_version = ${signed.version}
   `;
   return member ?? null;
-}
+});
 
 /** Signs in with a badge code. Returns the member, or null if the code is unknown. */
 export async function logInMember(code: string): Promise<Member | null> {

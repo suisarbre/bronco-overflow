@@ -164,8 +164,10 @@ function client(): postgres.Sql {
 /** Returns the SQL client, creating tables on first use in this process. */
 export async function db(): Promise<postgres.Sql> {
   const sql = client();
+  // A deploy can start several instances at once, and concurrent
+  // CREATE TABLE IF NOT EXISTS can still collide, so serialize it.
   globalForDb.schemaReady ??= sql
-    .unsafe(SCHEMA)
+    .unsafe(`SELECT pg_advisory_lock(8134127);\n${SCHEMA}\nSELECT pg_advisory_unlock(8134127);`)
     .then(() => undefined)
     .catch((err) => {
       globalForDb.schemaReady = undefined;

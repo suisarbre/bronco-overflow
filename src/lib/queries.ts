@@ -164,6 +164,9 @@ export type ModerationRow = {
   reasons: string[] | null;
   owner_id: string;
   ip_hash: string;
+  /** How much this browser / network posted in the last day, for the bulk-delete buttons. */
+  by_owner: number;
+  by_ip: number;
 };
 
 const MODERATION_COLUMNS = (sql: postgres.Sql) => sql`
@@ -180,11 +183,27 @@ const MODERATION_COLUMNS = (sql: postgres.Sql) => sql`
   FROM answers a
 `;
 
+/** Counts per poster for the bulk-delete buttons, joined in so the page stays one query. */
+const WITH_POSTER_COUNTS = (sql: postgres.Sql) => sql`
+  WITH posts AS (${MODERATION_COLUMNS(sql)}),
+  recent AS (
+    SELECT owner_id, ip_hash FROM questions WHERE created_at > now() - interval '1 day'
+    UNION ALL
+    SELECT owner_id, ip_hash FROM answers WHERE created_at > now() - interval '1 day'
+  ),
+  by_owner AS (SELECT owner_id, count(*)::int AS n FROM recent GROUP BY owner_id),
+  by_ip AS (SELECT ip_hash, count(*)::int AS n FROM recent GROUP BY ip_hash)
+  SELECT posts.*, coalesce(by_owner.n, 0) AS by_owner, coalesce(by_ip.n, 0) AS by_ip
+  FROM posts
+  LEFT JOIN by_owner ON by_owner.owner_id = posts.owner_id
+  LEFT JOIN by_ip ON by_ip.ip_hash = posts.ip_hash
+`;
+
 /** Posts waiting for review, auto-hidden posts, and anything that has been reported. */
 export async function moderationQueue(): Promise<ModerationRow[]> {
   const sql = await db();
   return sql<ModerationRow[]>`
-    SELECT * FROM (${MODERATION_COLUMNS(sql)}) posts
+    SELECT * FROM (${WITH_POSTER_COUNTS(sql)}) queue
     WHERE status <> 'visible' OR reports > 0
     ORDER BY (status <> 'visible') DESC, reports DESC, created_at DESC
     LIMIT 100
@@ -194,22 +213,6 @@ export async function moderationQueue(): Promise<ModerationRow[]> {
 export async function recentPosts(limit = 30): Promise<ModerationRow[]> {
   const sql = await db();
   return sql<ModerationRow[]>`
-    SELECT * FROM (${MODERATION_COLUMNS(sql)}) posts ORDER BY created_at DESC LIMIT ${limit}
+    SELECT * FROM (${WITH_POSTER_COUNTS(sql)}) recent_posts ORDER BY created_at DESC LIMIT ${limit}
   `;
-}
-
-/** How many posts this browser / network made in the last day (for bulk cleanup). */
-export async function posterCounts(ownerId: string, ipHash: string): Promise<{ by_owner: number; by_ip: number }> {
-  const sql = await db();
-  const [row] = await sql<{ by_owner: number; by_ip: number }[]>`
-    WITH recent AS (
-      SELECT owner_id, ip_hash FROM questions WHERE created_at > now() - interval '1 day'
-      UNION ALL
-      SELECT owner_id, ip_hash FROM answers WHERE created_at > now() - interval '1 day'
-    )
-    SELECT count(*) FILTER (WHERE owner_id = ${ownerId})::int AS by_owner,
-           count(*) FILTER (WHERE ip_hash = ${ipHash})::int AS by_ip
-    FROM recent
-  `;
-  return row;
 }

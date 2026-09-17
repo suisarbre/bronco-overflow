@@ -11,7 +11,7 @@ import { AcceptButton, DeleteButton, PinButton } from "@/components/PostControls
 import { RichText } from "@/components/RichText";
 import { TagBadge } from "@/components/TagBadge";
 import { VoteButton } from "@/components/VoteButton";
-import { plural, timeAgo } from "@/lib/format";
+import { campusTime, plural, timeAgo } from "@/lib/format";
 import { getVisitorId, isStaff } from "@/lib/identity";
 import { getMember } from "@/lib/members";
 import { getQuestion } from "@/lib/queries";
@@ -68,11 +68,11 @@ function Byline({
         </span>
       )}
       {author || "Anonymous"} ·{" "}
-      <time dateTime={date.toISOString()} title={date.toLocaleString("en-US")}>
+      <time dateTime={date.toISOString()} title={campusTime(date)}>
         {timeAgo(date)}
       </time>
       {edited && (
-        <span title={`Edited ${edited.toLocaleString("en-US")}`}>
+        <span title={`Edited ${campusTime(edited)}`}>
           {" "}
           · edited
         </span>

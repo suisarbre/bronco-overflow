@@ -11,7 +11,7 @@ import { timeAgo } from "@/lib/format";
 import { getStaffRole } from "@/lib/identity";
 import { listMembers } from "@/lib/members";
 import { getWordLists } from "@/lib/moderation";
-import { moderationQueue, posterCounts, recentPosts, type ModerationRow } from "@/lib/queries";
+import { moderationQueue, recentPosts, type ModerationRow } from "@/lib/queries";
 import { FILTER_MODE_LABELS, SETTINGS, SETTING_KEYS, type SettingState } from "@/lib/settings";
 import { getSettingStates } from "@/lib/settings-store";
 
@@ -33,8 +33,7 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
   );
 }
 
-async function PostRow({ row, admin }: { row: ModerationRow; admin: boolean }) {
-  const counts = await posterCounts(row.owner_id, row.ip_hash);
+function PostRow({ row, admin }: { row: ModerationRow; admin: boolean }) {
   const label = row.type === "q" ? row.title : row.body;
   const badge =
     row.status === "pending"
@@ -75,15 +74,15 @@ async function PostRow({ row, admin }: { row: ModerationRow; admin: boolean }) {
           action={row.type === "q" ? deleteQuestion.bind(null, row.id) : deleteAnswer.bind(null, row.id)}
         />
         <KeyedAction
-          label={`Delete all from this browser (${counts.by_owner})`}
+          label={`Delete all from this browser (${row.by_owner})`}
           danger
-          confirmText={`Delete ${counts.by_owner} post(s) this browser made in the last 24 hours?`}
+          confirmText={`Delete ${row.by_owner} post(s) this browser made in the last 24 hours?`}
           action={deleteByPoster.bind(null, "owner", row.owner_id)}
         />
         {admin && (
           <KeyedAction
-              label={`Delete all from this network (${counts.by_ip})`}
-            confirmText={`Delete ${counts.by_ip} post(s) from this network in the last 24 hours? On campus Wi-Fi this can include other people.`}
+              label={`Delete all from this network (${row.by_ip})`}
+            confirmText={`Delete ${row.by_ip} post(s) from this network in the last 24 hours? On campus Wi-Fi this can include other people.`}
             action={deleteByPoster.bind(null, "ip", row.ip_hash)}
             danger
           />

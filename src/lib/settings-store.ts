@@ -1,5 +1,6 @@
 import "server-only";
 import { after } from "next/server";
+import { cache } from "react";
 import { rotateAdminPasswordIfDue } from "./admin-password";
 import { db } from "./db";
 import {
@@ -22,7 +23,10 @@ function decode(key: SettingKey, raw: string | null) {
   }
 }
 
-export async function getSettingStates(): Promise<{ [K in SettingKey]: SettingState<K> }> {
+// cache(): the layout and the page both ask for settings on the same request.
+export const getSettingStates = cache(async function getSettingStates(): Promise<{
+  [K in SettingKey]: SettingState<K>;
+}> {
   const sql = await db();
   const rows = await sql<Row[]>`SELECT key, default_value, override_value, override_until FROM settings`;
   const byKey = new Map(rows.map((r) => [r.key, r]));
@@ -43,15 +47,15 @@ export async function getSettingStates(): Promise<{ [K in SettingKey]: SettingSt
     };
   }
   return result;
-}
+});
 
-export async function getSettings(): Promise<Settings> {
+export const getSettings = cache(async function getSettings(): Promise<Settings> {
   const states = await getSettingStates();
   const settings = Object.fromEntries(SETTING_KEYS.map((k) => [k, states[k].value])) as Settings;
   // Pages render first; the password check (and any rotation) happens afterwards.
   after(rotateAdminPasswordIfDue(settings.adminPasswordDays));
   return settings;
-}
+});
 
 export async function setDefault<K extends SettingKey>(key: K, value: Settings[K]): Promise<void> {
   const sql = await db();
