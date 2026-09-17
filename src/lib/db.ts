@@ -155,6 +155,9 @@ function client(): postgres.Sql {
       max: Number(process.env.DB_POOL_MAX ?? 5),
       // Neon's pooled endpoint runs PgBouncer, which doesn't support prepared statements.
       prepare: false,
+      // Fail fast and show the error page instead of leaving the visitor on a
+      // spinner when DATABASE_URL points somewhere unreachable.
+      connect_timeout: 10,
       onnotice: () => {},
     });
   }
