@@ -1,0 +1,61 @@
+"use client";
+
+import { startTransition, useActionState, useEffect, useRef, useState, type FormEvent } from "react";
+import { createAnswer, type FormState } from "@/app/actions";
+import { ImagePicker } from "./ImagePicker";
+import { NicknameInput } from "./NicknameInput";
+
+export function AnswerForm({ questionId }: { questionId: number }) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const [image, setImage] = useState<File | null>(null);
+  const [state, formAction, pending] = useActionState<FormState, FormData>(createAnswer, {});
+
+  useEffect(() => {
+    if (!state.ok) return;
+    formRef.current?.reset();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clear the photo after a successful post
+    setImage(null);
+  }, [state]);
+
+  // onSubmit (not `action`) so React doesn't wipe what was typed when posting fails.
+  function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    if (image) form.set("image", image);
+    startTransition(() => formAction(form));
+  }
+
+  return (
+    <form ref={formRef} onSubmit={submit} className="space-y-3 rounded-2xl border border-line bg-card p-4 sm:p-5">
+      <label htmlFor="answer-body" className="block font-semibold">
+        Your answer
+      </label>
+      <input type="hidden" name="questionId" value={questionId} />
+      <textarea
+        id="answer-body"
+        name="body"
+        rows={5}
+        maxLength={5000}
+        placeholder={"Share what you know. Paste code between ``` fences."}
+        className="w-full resize-y rounded-lg border border-line bg-bg px-3 py-2.5 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/25"
+      />
+      <input name="website" tabIndex={-1} autoComplete="off" aria-hidden className="hidden" />
+      <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
+        <NicknameInput />
+        <ImagePicker file={image} onChange={setImage} disabled={pending} />
+      </div>
+      <div className="flex items-center justify-between gap-3">
+        <p role="alert" className="text-sm text-danger">
+          {state.error}
+        </p>
+        <button
+          type="submit"
+          disabled={pending}
+          className="shrink-0 rounded-lg bg-brand px-5 py-2.5 font-semibold text-on-brand hover:bg-brand-strong disabled:opacity-60"
+        >
+          {pending ? "Posting…" : "Post answer"}
+        </button>
+      </div>
+    </form>
+  );
+}

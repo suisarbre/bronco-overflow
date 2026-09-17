@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+/* Cal Poly Pomona-ish green & gold. */
+:root {
+  --bg: #f6f7f4;
+  --fg: #16201a;
+  --card: #ffffff;
+  --subtle: #eef1ec;
+  --line: #dfe3dc;
+  --muted: #5d6a61;
+  --brand: #1e4d2b;
+  --brand-strong: #163a20;
+  --on-brand: #ffffff;
+  --accent: #ffb500;
+  --accent-strong: #9a5b00;
+  --link: #1d6b3a;
+  --code: #eceee9;
+  --danger: #b42318;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1411;
+    --fg: #e7ece8;
+    --card: #161d18;
+    --subtle: #1d2620;
+    --line: #2a352d;
+    --muted: #9aa89e;
+    --brand: #5fbf7f;
+    --brand-strong: #7fd29a;
+    --on-brand: #08140c;
+    --accent: #ffc53d;
+    --accent-strong: #ffc53d;
+    --link: #7fd29a;
+    --code: #1f2922;
+    --danger: #f97066;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-fg: var(--fg);
+  --color-card: var(--card);
+  --color-subtle: var(--subtle);
+  --color-line: var(--line);
+  --color-muted: var(--muted);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-on-brand: var(--on-brand);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-link: var(--link);
+  --color-code: var(--code);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+:root {
+  color-scheme: light dark;
+}
