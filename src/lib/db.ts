@@ -90,6 +90,14 @@ CREATE TABLE IF NOT EXISTS settings (
   override_until TIMESTAMPTZ
 );
 
+-- Server-generated secrets: the session signing key, the IP hash salt, and the
+-- hashed tutor password. Never leaves the server.
+CREATE TABLE IF NOT EXISTS secrets (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Admin additions to the profanity filter: extra blocked words, and built-in words to allow.
 CREATE TABLE IF NOT EXISTS filter_words (
   word     TEXT NOT NULL,

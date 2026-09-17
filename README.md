@@ -19,9 +19,12 @@ deliberately small. See [Contributing](#contributing) before adding anything.
   unlocks that post on another browser or device. Only a hash of the code is stored.
 - **Reporting**: when enough different browsers report a post (3 by default), it is hidden for a tutor to
   review — hidden, not deleted.
-- **Tutor tools** at `/admin` (password in `ADMIN_PASSWORD`): an emergency read-only switch, temporary
-  setting changes that expire on their own, editable defaults, the word filter, and a review queue with
-  approve / hide / delete and bulk delete by browser or network.
+- **Tutor tools** at `/admin`: an emergency read-only switch, temporary setting changes that expire on
+  their own, editable defaults, the word filter, and a review queue with approve / hide / delete and bulk
+  delete by browser or network.
+- **Tutor password**: the server picks a new one every 7 days (configurable) and posts it to the Discord
+  channel; only its hash is stored. `ADMIN_PASSWORD` stays valid as a break-glass key. Rotation is skipped
+  entirely when no Discord webhook is set, so nobody gets locked out.
 - **Discord alerts** for reports, held posts, auto-hides, and (optionally) every new post.
 - **Photos**: resized in the browser to max 1600px WebP before upload, so most are a few hundred KB.
   The server caps them at 2 MB and checks the file's real type, not what the browser claims.
@@ -70,6 +73,7 @@ site read-only until a tutor turns it back on.
 | Profanity filter (off / censor / hold for review / reject) | Censor |
 | Reports before auto-hide | 3 |
 | Discord alert for every new post | On |
+| New tutor password every … days | 7 (0 turns rotation off) |
 
 ## Stack
 
@@ -98,9 +102,11 @@ the Vercel dashboard.
 3. **Add the database**: project → **Storage** → **Create Database** → **Neon** (Free) → connect it to the
    project. This sets `DATABASE_URL`.
 4. **Add photo storage**: same **Storage** tab → **Blob** → connect it. This sets `BLOB_READ_WRITE_TOKEN`.
-5. **Set `ADMIN_PASSWORD`** under **Settings → Environment Variables**. Make it long.
-6. **Optional: Discord alerts.** Create a webhook in your Discord channel settings (Integrations → Webhooks)
-   and set `DISCORD_WEBHOOK_URL`.
+5. **Set `ADMIN_PASSWORD`** under **Settings → Environment Variables**. Make it long. This is the
+   break-glass key; day-to-day, tutors use the rotating password from Discord.
+6. **Discord alerts and the rotating password.** Create a webhook in your Discord channel settings
+   (Integrations → Webhooks) and set `DISCORD_WEBHOOK_URL`. Use a channel only tutors can read — the tutor
+   password is posted there.
 7. **Redeploy** from the Deployments tab. After that, every push to `main` deploys automatically.
 8. Open `https://<project>.vercel.app/qr` and print the poster.
 

@@ -1,6 +1,7 @@
 "use server";
 
 import { refresh, revalidatePath } from "next/cache";
+import { rotateAdminPassword } from "@/lib/admin-password";
 import { db } from "@/lib/db";
 import { isAdmin } from "@/lib/identity";
 import { addWord, isUsableWord, removeWord, runFilter } from "@/lib/moderation";
@@ -87,6 +88,14 @@ export async function stopEverything(): Promise<void> {
   await setOverride("readOnly", true, null);
   await notifyDiscord("Board paused", "A tutor switched on read-only mode.");
   revalidatePath("/");
+  revalidatePath("/admin");
+  refresh();
+}
+
+/** Picks a new tutor password right now and posts it to Discord. */
+export async function rotatePassword(): Promise<void> {
+  if (!(await requireAdmin())) return;
+  await rotateAdminPassword();
   revalidatePath("/admin");
   refresh();
 }

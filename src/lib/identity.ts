@@ -1,6 +1,8 @@
 import "server-only";
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { cookies, headers } from "next/headers";
+import { checkAdminPassword } from "./admin-password";
+import { getSecret } from "./secrets";
 
 const VISITOR_COOKIE = "qa_visitor";
 const ADMIN_COOKIE = "qa_admin";
@@ -29,20 +31,19 @@ export async function getOrCreateVisitorId(): Promise<string> {
   return id;
 }
 
-function secret(): string {
-  return process.env.ADMIN_PASSWORD || "local-dev-only";
-}
-
 /** Hashed client IP, used only for spam limits. Raw IPs are never stored. */
 export async function getIpHash(): Promise<string> {
   const h = await headers();
   const ip =
     h.get("x-real-ip") ?? h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-  return createHash("sha256").update(`${secret()}:${ip}`).digest("hex").slice(0, 32);
+  const salt = await getSecret("ip_salt");
+  return createHash("sha256").update(`${salt}:${ip}`).digest("hex").slice(0, 32);
 }
 
-function adminToken(): string {
-  return createHmac("sha256", secret()).update("admin-session").digest("hex");
+// Signed with a server-generated key, not the password, so rotating the tutor
+// password doesn't sign everyone out (and doesn't change every IP hash).
+async function adminToken(): Promise<string> {
+  return createHmac("sha256", await getSecret("session_secret")).update("admin-session").digest("hex");
 }
 
 function safeEqual(a: string, b: string): boolean {
@@ -54,14 +55,13 @@ function safeEqual(a: string, b: string): boolean {
 export async function isAdmin(): Promise<boolean> {
   // Read cookies first so pages using this always render per request.
   const value = (await cookies()).get(ADMIN_COOKIE)?.value;
-  if (!process.env.ADMIN_PASSWORD) return false;
-  return !!value && safeEqual(value, adminToken());
+  if (!value) return false;
+  return safeEqual(value, await adminToken());
 }
 
 export async function logInAdmin(password: string): Promise<boolean> {
-  const expected = process.env.ADMIN_PASSWORD;
-  if (!expected || !safeEqual(password, expected)) return false;
-  (await cookies()).set(ADMIN_COOKIE, adminToken(), {
+  if (!(await checkAdminPassword(password))) return false;
+  (await cookies()).set(ADMIN_COOKIE, await adminToken(), {
     httpOnly: true,
     sameSite: "lax",
     secure,

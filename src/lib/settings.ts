@@ -12,6 +12,7 @@ export type Settings = {
   filterMode: FilterMode;
   reportThreshold: number;
   notifyAllPosts: boolean;
+  adminPasswordDays: number;
 };
 export type SettingKey = keyof Settings;
 
@@ -60,6 +61,12 @@ export const SETTINGS: { [K in SettingKey]: Definition<K> } = {
     help: "Reports, auto-hides, and posts waiting for review are always sent.",
     fallback: true,
     parse: bool,
+  },
+  adminPasswordDays: {
+    label: "New tutor password every … days",
+    help: "The server picks a new password and posts it to Discord. 0 turns rotation off. Needs a Discord webhook.",
+    fallback: 7,
+    parse: (v) => (Number.isInteger(v) && (v as number) >= 0 && (v as number) <= 90 ? (v as number) : undefined),
   },
 };
 

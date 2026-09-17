@@ -1,10 +1,10 @@
 "use server";
 
-import { createHash, randomInt } from "node:crypto";
 import { refresh, revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { redirect } from "next/navigation";
 import type postgres from "postgres";
+import { hashCode, newCode, normalizeCode } from "@/lib/codes";
 import { db } from "@/lib/db";
 import {
   getIpHash,
@@ -176,27 +176,7 @@ async function storeImage(
 // ---------------------------------------------------------------------------
 // Ownership and recovery codes
 
-// Crockford base32: no I, L, O, U, so codes are easy to read aloud and retype.
-const CODE_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-const CODE_LENGTH = 12; // 60 bits
-
-function newRecoveryCode(): string {
-  let code = "";
-  for (let i = 0; i < CODE_LENGTH; i++) code += CODE_ALPHABET[randomInt(CODE_ALPHABET.length)];
-  return code.match(/.{4}/g)!.join("-");
-}
-
-function normalizeCode(input: string): string {
-  return input
-    .toUpperCase()
-    .replace(/O/g, "0")
-    .replace(/[IL]/g, "1")
-    .replace(/[^0-9A-Z]/g, "");
-}
-
-function hashCode(code: string): string {
-  return createHash("sha256").update(normalizeCode(code)).digest("hex");
-}
+const CODE_LENGTH = 12; // 3 groups of 4, 60 bits
 
 type PostType = "q" | "a";
 
@@ -258,7 +238,7 @@ export async function createQuestion(_prev: FormState, form: FormData): Promise<
   if ("error" in stored) return { error: stored.error };
 
   const pending = verdict.action === "review";
-  const code = newRecoveryCode();
+  const code = newCode();
   const sql = await db();
   const [row] = await sql<{ id: number }[]>`
     INSERT INTO questions (title, body, tag, author, image_url, owner_id, recovery_hash, ip_hash,
@@ -310,7 +290,7 @@ export async function createAnswer(_prev: FormState, form: FormData): Promise<Fo
   if ("error" in stored) return { error: stored.error };
 
   const pending = verdict.action === "review";
-  const code = newRecoveryCode();
+  const code = newCode();
   const sql = await db();
   const inserted = await sql.begin(async (tx) => {
     const [row] = await tx<{ id: number }[]>`

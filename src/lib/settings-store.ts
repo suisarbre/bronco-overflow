@@ -1,4 +1,6 @@
 import "server-only";
+import { after } from "next/server";
+import { rotateAdminPasswordIfDue } from "./admin-password";
 import { db } from "./db";
 import {
   SETTINGS,
@@ -45,7 +47,10 @@ export async function getSettingStates(): Promise<{ [K in SettingKey]: SettingSt
 
 export async function getSettings(): Promise<Settings> {
   const states = await getSettingStates();
-  return Object.fromEntries(SETTING_KEYS.map((k) => [k, states[k].value])) as Settings;
+  const settings = Object.fromEntries(SETTING_KEYS.map((k) => [k, states[k].value])) as Settings;
+  // Pages render first; the password check (and any rotation) happens afterwards.
+  after(rotateAdminPasswordIfDue(settings.adminPasswordDays));
+  return settings;
 }
 
 export async function setDefault<K extends SettingKey>(key: K, value: Settings[K]): Promise<void> {

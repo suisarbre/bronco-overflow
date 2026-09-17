@@ -3,8 +3,9 @@ import Link from "next/link";
 import { AdminLoginForm } from "./AdminLoginForm";
 import { DefaultForm, EmergencyButtons, KeyedAction, OverrideForm } from "./SettingControls";
 import { WordFilter } from "./WordFilter";
-import { approvePost, deleteByPoster, hidePost } from "./actions";
+import { approvePost, deleteByPoster, hidePost, rotatePassword } from "./actions";
 import { deleteAnswer, deleteQuestion } from "@/app/actions";
+import { adminLoginPossible, adminPasswordAge } from "@/lib/admin-password";
 import { timeAgo } from "@/lib/format";
 import { isAdmin } from "@/lib/identity";
 import { getWordLists } from "@/lib/moderation";
@@ -90,12 +91,16 @@ async function PostRow({ row }: { row: ModerationRow }) {
 
 export default async function AdminPage() {
   if (!(await isAdmin())) {
+    const canLogIn = await adminLoginPossible();
     return (
       <div className="mx-auto max-w-sm space-y-4 rounded-2xl border border-line bg-card p-6">
         <h1 className="text-xl font-bold">Tutor login</h1>
-        {process.env.ADMIN_PASSWORD ? (
+        {canLogIn ? (
           <>
-            <p className="text-sm text-muted">Signed-in tutors can moderate posts and change site settings.</p>
+            <p className="text-sm text-muted">
+              Signed-in tutors can moderate posts and change site settings. The current password is in the
+              tutors&apos; Discord channel.
+            </p>
             <AdminLoginForm />
           </>
         ) : (
@@ -107,12 +112,15 @@ export default async function AdminPage() {
     );
   }
 
-  const [states, words, queue, recent] = await Promise.all([
+  const [states, words, queue, recent, passwordSetAt] = await Promise.all([
     getSettingStates(),
     getWordLists(),
     moderationQueue(),
     recentPosts(),
+    adminPasswordAge(),
   ]);
+  const rotationDays = states.adminPasswordDays.value;
+  const webhookMissing = !process.env.DISCORD_WEBHOOK_URL;
   const overrides = SETTING_KEYS.filter((key) => states[key].override);
 
   return (
@@ -166,6 +174,28 @@ export default async function AdminPage() {
             </li>
           ))}
         </ul>
+      </Card>
+
+      <Card title="Tutor password">
+        <p className="text-sm text-muted">
+          {webhookMissing
+            ? "Set DISCORD_WEBHOOK_URL to let the server rotate the password and post the new one to Discord. Until then, the ADMIN_PASSWORD environment variable is the only way in."
+            : rotationDays > 0
+              ? `A new password goes to Discord every ${rotationDays} day${rotationDays === 1 ? "" : "s"}. Change that under "Default settings" above.`
+              : "Rotation is off. Turn it on under “Default settings” above."}
+        </p>
+        <p className="text-sm text-muted">
+          {passwordSetAt
+            ? `Current password was posted to Discord ${timeAgo(passwordSetAt)}.`
+            : "No password has been generated yet — the ADMIN_PASSWORD environment variable is in use."}
+        </p>
+        {!webhookMissing && (
+          <KeyedAction
+            label="Post a new password to Discord now"
+            confirmText="Replace the tutor password? Everyone will need the new one from Discord to sign in again. You stay signed in."
+            action={rotatePassword}
+          />
+        )}
       </Card>
 
       <Card title="Word filter">
