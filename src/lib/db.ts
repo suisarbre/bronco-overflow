@@ -164,18 +164,45 @@ function client(): postgres.Sql {
   return globalForDb.sql;
 }
 
+const SCHEMA_TIMEOUT_MS = 15_000;
+
+/**
+ * Applies the schema, retrying once: two instances starting together can both
+ * run CREATE TABLE IF NOT EXISTS, and one of them loses the race with a
+ * duplicate-object error. An advisory lock would be tidier, but Neon's pooled
+ * endpoint runs PgBouncer, where a session lock can outlive the client and
+ * wedge every later request.
+ */
+async function applySchema(sql: postgres.Sql): Promise<void> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      // Never let one stuck statement hang every page on the site.
+      await Promise.race([
+        sql.unsafe(SCHEMA),
+        new Promise((_, reject) =>
+          setTimeout(
+            () => reject(new Error("Timed out setting up the database schema")),
+            SCHEMA_TIMEOUT_MS,
+          ),
+        ),
+      ]);
+      return;
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      const lostTheRace = code === "23505" || code === "42P07" || code === "42710";
+      if (!lostTheRace || attempt === 1) throw err;
+    }
+  }
+}
+
 /** Returns the SQL client, creating tables on first use in this process. */
 export async function db(): Promise<postgres.Sql> {
   const sql = client();
-  // A deploy can start several instances at once, and concurrent
-  // CREATE TABLE IF NOT EXISTS can still collide, so serialize it.
-  globalForDb.schemaReady ??= sql
-    .unsafe(`SELECT pg_advisory_lock(8134127);\n${SCHEMA}\nSELECT pg_advisory_unlock(8134127);`)
-    .then(() => undefined)
-    .catch((err) => {
-      globalForDb.schemaReady = undefined;
-      throw err;
-    });
+  globalForDb.schemaReady ??= applySchema(sql).catch((err) => {
+    // Let the next request try again instead of caching the failure forever.
+    globalForDb.schemaReady = undefined;
+    throw err;
+  });
   await globalForDb.schemaReady;
   return sql;
 }
