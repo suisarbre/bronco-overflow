@@ -1,81 +1,113 @@
 # CPP CS Q&A
 
-Cal Poly Pomona CS 튜터링용 익명 Q&A 사이트. QR 코드를 찍고 들어와서 로그인 없이 질문하고 답할 수 있어요.
+An anonymous question board for Cal Poly Pomona CS tutoring. Students scan a QR code, ask a question,
+and answer each other — no account, no login.
 
-- 메인: 질문 입력칸 → 그 아래 **Hot / Newest / Unanswered** 피드, 태그 필터, 검색
-- 질문: 제목 + 상세(선택) + 태그(수업 / 코딩 / 커리어 / 캠퍼스 / 잡담) + 사진 1장 + 닉네임(선택)
-- 본문의 링크는 자동으로 클릭 가능, ```` ``` ```` 로 감싼 코드는 코드블록, `` `x` `` 는 인라인 코드
-- 추천(upvote), 질문자가 답변을 "solution"으로 채택
-- 자기 글은 같은 브라우저에서 수정/삭제 가능 ("edited" 표시)
-- 글을 올리면 **복구 코드**(`XXXX-XXXX-XXXX`)를 한 번 보여줌 → 다른 기기/브라우저에서 `/recover` 에 입력하면 그 글을 수정/삭제 가능 (DB에는 해시만 저장)
-- 신고 버튼: 서로 다른 3명(기본값)이 신고하면 자동으로 숨겨지고 튜터가 검토
-- 튜터 `/admin` 페이지: 비상 정지, 임시 설정(1·2·6·12·24시간 또는 직접 끌 때까지), 기본값 설정, 금지어 관리, 검토 대기/신고/최근 글 처리(승인·숨김·삭제·작성자 글 일괄 삭제)
-- Discord 웹훅 알림 (새 글, 검토 대기, 신고, 자동 숨김)
-- 사진은 브라우저에서 최대 1600px WebP로 줄여서 업로드 (보통 수백 KB 이하, 서버 한도 2 MB, 파일 내용으로 형식 확인)
-- `/qr`: 사이트 주소가 들어간 인쇄용 QR 포스터
+The whole thing runs on free tiers. **Keeping it free and simple is the point**, so the scope below is
+deliberately small. See [Contributing](#contributing) before adding anything.
 
-### 스팸/남용 한도 ([src/app/actions.ts](src/app/actions.ts) 맨 위)
+## What it does
 
-캠퍼스 와이파이는 여러 명이 IP를 공유할 수 있어서 IP 한도는 넉넉하게 잡았어요.
+- **Home**: an ask box on top, then a feed you can sort by **Hot / Newest / Unanswered**, filter by tag, or search.
+- **Questions**: title, optional details, one tag (class, coding, career, campus, chatting), one optional
+  photo, optional nickname.
+- **Text**: links become clickable, ```` ``` ```` fences render as code blocks, `` `x` `` as inline code.
+  Everything else is plain text.
+- **Answers**: upvotes, and the asker can mark one answer as the solution.
+- **Owning a post**: you can edit or delete your own posts from the browser you wrote them in (edited posts
+  are labeled). Posting also shows a one-time recovery code (`XXXX-XXXX-XXXX`); entering it at `/recover`
+  unlocks that post on another browser or device. Only a hash of the code is stored.
+- **Reporting**: when enough different browsers report a post (3 by default), it is hidden for a tutor to
+  review — hidden, not deleted.
+- **Tutor tools** at `/admin` (password in `ADMIN_PASSWORD`): an emergency read-only switch, temporary
+  setting changes that expire on their own, editable defaults, the word filter, and a review queue with
+  approve / hide / delete and bulk delete by browser or network.
+- **Discord alerts** for reports, held posts, auto-hides, and (optionally) every new post.
+- **Photos**: resized in the browser to max 1600px WebP before upload, so most are a few hundred KB.
+  The server caps them at 2 MB and checks the file's real type, not what the browser claims.
+- **`/qr`**: a printable poster with a QR code pointing at the site.
 
-| 항목 | 한도 |
+Not in scope on purpose: accounts and logins, video uploads, comment threads, notifications,
+private messaging, rich-text editing, analytics dashboards.
+
+## Moderation and limits
+
+New posts run through a profanity filter, a link cap, and a duplicate check.
+
+Campus Wi-Fi puts many people behind one IP address, so per-IP limits are loose on purpose, and per-browser
+limits do the real work.
+
+| What | Limit |
 | --- | --- |
-| 글쓰기 | 브라우저당 10분 6개, IP당 10분 40개 (지워도 카운트 유지) |
-| 사진 | IP당 1시간 100장, **사이트 전체 하루 150 MB** (무료 1 GB 보호) |
-| 추천 | 글 하나당 IP별 1시간 50개 |
-| 수정 | 브라우저당 10분 20회 |
-| 복구 코드 틀림 | IP당 15분 20회 |
-| 관리자 로그인 실패 | IP당 15분 5회, 전체 15분 30회 |
-| 신고 | IP당 10분 30회 |
+| Posting | 6 per browser / 10 min, 40 per IP / 10 min (deleted posts still count) |
+| Photos | 100 per IP / hour, **150 MB site-wide per day** (protects the free 1 GB store) |
+| Votes | 50 per IP per post / hour |
+| Edits | 20 per browser / 10 min |
+| Wrong recovery codes | 20 per IP / 15 min |
+| Failed admin logins | 5 per IP / 15 min, 30 site-wide / 15 min |
+| Reports | 30 per IP / 10 min |
 
-### 관리자 설정 (`/admin`)
+Duplicate rule: the exact same text within an hour is rejected — always from the same browser, but from the
+same IP only when the text is 60+ characters, so two students posting "Thank you!" don't collide.
 
-각 설정은 **기본값**과 **임시 변경값**을 따로 가져요. 임시 변경은 고른 시간이 지나면 자동으로 기본값으로 돌아가고, "Clear all temporary changes" 로 한꺼번에 해제할 수 있어요. **STOP EVERYTHING** 은 직접 끌 때까지 사이트를 읽기 전용으로 만들어요.
+Posts with more than 3 links are held for review.
 
-| 설정 | 기본값 |
+The filter uses the English word list from [obscenity](https://github.com/jo3-l/obscenity) and catches
+variants like `f.u.c.k` and `sh1t`. Tutors can add words (e.g. `chegg`), un-block built-in words, and test a
+sentence right on the admin page.
+
+### Settings
+
+Every setting has a **default** and an optional **temporary change** that reverts on its own (1, 2, 6, 12,
+24 hours, or until cleared). "Clear all temporary changes" reverts everything; **STOP EVERYTHING** makes the
+site read-only until a tutor turns it back on.
+
+| Setting | Default |
 | --- | --- |
-| 읽기 전용 모드 | 끔 |
-| 새 글 승인 후 공개 | 끔 |
-| 사진 업로드 중지 | 끔 |
-| 욕설 필터 (끄기 / 가려서 올리기 / 검토 대기 / 차단) | 가려서 올리기 |
-| 자동 숨김 신고 수 | 3 |
-| 모든 새 글 Discord 알림 | 켬 |
+| Read-only mode | Off |
+| Hold new posts for approval | Off |
+| Pause photo uploads | Off |
+| Profanity filter (off / censor / hold for review / reject) | Censor |
+| Reports before auto-hide | 3 |
+| Discord alert for every new post | On |
 
-욕설 필터는 영어 기본 목록([obscenity](https://github.com/jo3-l/obscenity))을 쓰고, `f.u.c.k` 나 `sh1t` 같은 변형도 잡아요. 관리자 페이지에서 단어를 추가하거나(예: `chegg`), 기본 목록의 단어를 해제할 수 있고, 문장을 넣어 바로 테스트할 수 있어요. 링크가 4개 이상인 글은 자동으로 검토 대기로 가요. 1시간 안에 완전히 똑같은 글을 다시 올리면 막는데, 같은 브라우저면 언제나 막고 같은 IP는 글이 60자 이상일 때만 막아요 (캠퍼스 와이파이는 IP를 공유하니까, 다른 사람이 쓴 짧은 답변까지 막히지 않도록요).
+## Stack
 
-## 스택 (전부 무료 티어)
-
-| 역할 | 서비스 |
+| Role | Service |
 | --- | --- |
-| 코드 | GitHub |
-| 호스팅 | Vercel Hobby (Next.js 16) |
-| DB | Neon Postgres (Vercel Marketplace에서 연결) |
-| 사진 | Vercel Blob |
+| Code | GitHub |
+| Hosting | Vercel Hobby (Next.js 16) |
+| Database | Neon Postgres (added from Vercel's Storage tab) |
+| Photos | Vercel Blob |
 
-테이블은 첫 요청 때 자동으로 생성돼서 따로 마이그레이션할 필요가 없어요 ([src/lib/db.ts](src/lib/db.ts)).
+Tables are created on first request, so there is no migration step ([src/lib/db.ts](src/lib/db.ts)).
 
-## 배포하기
+Free-tier notes: Vercel's Hobby plan is for non-commercial projects, which this is. A free Neon database
+sleeps when nobody is using it and wakes on the next request (your data stays). Watch the **Usage** tab in
+the Vercel dashboard.
 
-1. **GitHub에 올리기**: GitHub에 새 저장소(private도 됨)를 만들고 push.
+## Deploying
+
+1. **Push to GitHub** (a private repo is fine):
    ```bash
    git remote add origin https://github.com/<you>/cpp-cs-qa.git
    git push -u origin main
    ```
-2. **Vercel 프로젝트 만들기**: [vercel.com/new](https://vercel.com/new) → GitHub 저장소 Import → Deploy.
-   첫 배포는 DB가 없어서 에러 페이지가 떠도 정상이에요.
-3. **DB 연결**: 프로젝트 → **Storage** → **Create Database** → **Neon** (Free) → 프로젝트에 연결.
-   `DATABASE_URL` 이 자동으로 추가돼요.
-4. **사진 저장소 연결**: 같은 **Storage** 탭에서 **Blob** 생성 → 프로젝트에 연결.
-   `BLOB_READ_WRITE_TOKEN` 이 자동으로 추가돼요.
-5. **관리자 비밀번호**: 프로젝트 → **Settings → Environment Variables** 에 `ADMIN_PASSWORD` 추가 (길게).
-6. **(선택) Discord 알림**: Discord 채널 설정 → 연동 → 웹후크에서 URL을 만들어 `DISCORD_WEBHOOK_URL` 환경변수에 추가해요.
-7. **Redeploy**: Deployments → 최신 배포 → Redeploy. 이후에는 `main` 에 push할 때마다 자동 배포돼요.
-8. `https://<프로젝트>.vercel.app/qr` 을 열어서 포스터를 인쇄하면 끝.
+2. **Create the Vercel project**: [vercel.com/new](https://vercel.com/new) → import the repo → Deploy.
+   The first deploy shows an error page because there's no database yet. That's expected.
+3. **Add the database**: project → **Storage** → **Create Database** → **Neon** (Free) → connect it to the
+   project. This sets `DATABASE_URL`.
+4. **Add photo storage**: same **Storage** tab → **Blob** → connect it. This sets `BLOB_READ_WRITE_TOKEN`.
+5. **Set `ADMIN_PASSWORD`** under **Settings → Environment Variables**. Make it long.
+6. **Optional: Discord alerts.** Create a webhook in your Discord channel settings (Integrations → Webhooks)
+   and set `DISCORD_WEBHOOK_URL`.
+7. **Redeploy** from the Deployments tab. After that, every push to `main` deploys automatically.
+8. Open `https://<project>.vercel.app/qr` and print the poster.
 
-> 환경변수 이름이 다르게 들어갔다면 (예: `POSTGRES_URL` 만 있는 경우) `DATABASE_URL` 에 같은 값을 넣어주세요.
-> Neon은 **pooled** 연결 문자열(호스트에 `-pooler` 포함)을 쓰는 게 좋아요.
+> If your database variable has another name (for example only `POSTGRES_URL` exists), copy the same value
+> into `DATABASE_URL`. Prefer Neon's **pooled** connection string (the host contains `-pooler`).
 
-## 로컬에서 실행
+## Running it locally
 
 ```bash
 npm install
@@ -84,18 +116,39 @@ npx vercel env pull .env.local
 npm run dev
 ```
 
-`BLOB_READ_WRITE_TOKEN` 이 없으면 개발 모드에서는 사진이 `public/uploads/` 에 저장돼요.
+Without `BLOB_READ_WRITE_TOKEN`, photos are saved to `public/uploads/` in development.
 
-## 자주 바꿀 곳
+## Where things live
 
-- 수업 목록 / 태그: [src/lib/tags.ts](src/lib/tags.ts) (한번 쓰인 `id` 는 바꾸지 마세요)
-- 도배/업로드 한도, 글자 수 제한: [src/app/actions.ts](src/app/actions.ts)
-- 설정 목록과 기본값: [src/lib/settings.ts](src/lib/settings.ts)
-- 필터·중복·링크 규칙: [src/lib/moderation.ts](src/lib/moderation.ts)
-- 색상: [src/app/globals.css](src/app/globals.css)
+- Classes and tags: [src/lib/tags.ts](src/lib/tags.ts) — don't rename an `id` that posts already use
+- Rate limits and length limits: [src/app/actions.ts](src/app/actions.ts)
+- Settings and their defaults: [src/lib/settings.ts](src/lib/settings.ts)
+- Filter, duplicate, and link rules: [src/lib/moderation.ts](src/lib/moderation.ts)
+- Colors: [src/app/globals.css](src/app/globals.css)
 
-## 무료 티어 참고
+## Contributing
 
-- Vercel Hobby는 비상업적 개인 프로젝트용이에요. 이 용도면 괜찮아요.
-- Neon 무료 DB는 쓰는 사람이 없으면 잠들었다가, 다음 요청 때 1초 안팎으로 깨어나요 (데이터는 그대로).
-- 각 서비스 사용량은 Vercel 대시보드의 **Usage** 탭에서 확인할 수 있어요.
+The goal is a board that a tutor can forget about for a month and that never sends anyone a bill. Small,
+boring changes are the good ones.
+
+**Please do**
+
+- Fix bugs, improve wording, improve accessibility, and tune the numbers in the tables above.
+- Keep it free: no new paid services, and no feature that grows storage or database usage without a limit.
+- Keep dependencies to a minimum. Everything we add has to be maintained by the next tutor.
+- Keep posting anonymous and low-friction. Scanning a QR code and typing should stay the whole flow.
+- Run `npm run lint`, `npx tsc --noEmit`, and `npm run build` before opening a pull request.
+- Say in the PR what it costs: new tables, new stored data, extra requests per page view.
+
+**Please don't**
+
+- Add accounts, logins, or anything that collects personal data. We store no emails, names, or raw IPs
+  (IP addresses are only ever stored as salted hashes, for rate limits).
+- Add a feature "because other Q&A sites have it". If tutors haven't asked for it twice, it can wait.
+- Add a background job, cron, queue, or analytics service.
+- Reformat files you aren't otherwise changing.
+
+**Good first issues**: fix the class list in `tags.ts`, improve the empty states, make the admin page nicer
+on a phone.
+
+If you're not sure whether something fits, open an issue first and ask — that's cheaper than building it.
