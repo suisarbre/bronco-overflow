@@ -2,6 +2,12 @@ import "server-only";
 import postgres from "postgres";
 
 const SCHEMA = `
+-- Wait only briefly for locks: if another session is mid-DDL (or stuck), fail
+-- and let the next request retry instead of queueing every page behind it.
+-- LOCAL keeps these to this transaction, so they can't leak through the pooler.
+SET LOCAL lock_timeout = '5s';
+SET LOCAL statement_timeout = '10s';
+
 CREATE TABLE IF NOT EXISTS questions (
   id                 SERIAL PRIMARY KEY,
   title              TEXT NOT NULL,
