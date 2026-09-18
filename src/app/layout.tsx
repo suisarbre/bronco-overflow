@@ -59,10 +59,10 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                   </span>
                 )}
                 {role === "admin" && (
-                  <span className="hidden rounded bg-accent px-1.5 py-0.5 font-semibold text-on-accent sm:inline">ADMIN</span>
+                  <span className="rounded bg-accent px-1.5 py-0.5 font-semibold text-on-accent">ADMIN</span>
                 )}
                 {role === "tutor" && (
-                  <span className="hidden rounded bg-white px-1.5 py-0.5 font-semibold text-brand sm:inline dark:bg-brand dark:text-on-brand">
+                  <span className="rounded bg-white px-1.5 py-0.5 font-semibold text-brand dark:bg-brand dark:text-on-brand">
                     TUTOR
                   </span>
                 )}
