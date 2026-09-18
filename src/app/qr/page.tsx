@@ -10,7 +10,8 @@ export default async function QrPage() {
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
   const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  const url = process.env.NEXT_PUBLIC_SITE_URL ?? `${proto}://${host}`;
+  // `||`, not `??`: a variable that's set but blank must fall back too.
+  const url = process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/$/, "") || `${proto}://${host}`;
 
   const svg = await QRCode.toString(url, {
     type: "svg",
