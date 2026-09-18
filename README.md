@@ -57,7 +57,8 @@ deliberately small. See [Contributing](#contributing) before adding anything.
   answers and the time. Names attached to tutoring visits would be student records, which belong in a
   university-approved system, not on free hosting. (Hashing names doesn't fix that: with a class roster
   they can be matched back in seconds.)
-- **No double counting**: scanning again from the same browser within 3 hours says "already checked in".
+- **Limited double counting**: people step out and come back, so one browser can check in up to 3 times
+  in 3 hours; after that, scanning again says "already checked in".
   That browser id is kept for two days in the rate-limit table only, not with the check-in.
 - The phone remembers year and class (on the device only), so the next visit is a couple of taps.
 - **For staff** (tutors and admins), on `/admin`: counts for today / 7 / 30 days, breakdowns by class,
@@ -88,7 +89,7 @@ limits do the real work.
 | Wrong recovery codes | 20 per IP / 15 min |
 | Failed admin logins | 5 per IP / 15 min, 30 site-wide / 15 min |
 | Reports | 30 per IP / 10 min |
-| Check-ins | 1 per browser / 3 hours (repeats say "already checked in"), 300 per IP / hour |
+| Check-ins | 3 per browser / 3 hours (more say "already checked in"), 300 per IP / hour |
 
 Duplicate rule: the exact same text within an hour is rejected — always from the same browser, but from the
 same IP only when the text is 60+ characters, so two students posting "Thank you!" don't collide.

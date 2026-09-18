@@ -7,8 +7,10 @@ import { getIpHash, getOrCreateVisitorId } from "@/lib/identity";
 
 export type CheckinState = { ok?: boolean; again?: boolean; error?: string };
 
-// Re-scanning within this window counts as the same visit (no checkout needed).
+// People step out and come back, so a few check-ins per browser in this window
+// count; past that, a re-scan is treated as the same visit (no checkout needed).
 const SAME_VISIT_HOURS = 3;
+const MAX_PER_BROWSER = 3;
 // Loose, because everyone at the desk shares the campus Wi-Fi address.
 const MAX_PER_IP_PER_HOUR = 300;
 
@@ -48,7 +50,7 @@ export async function checkIn(_prev: CheckinState, form: FormData): Promise<Chec
     FROM activity
     WHERE kind = 'checkin' AND created_at > now() - (${SAME_VISIT_HOURS} * interval '1 hour')
   `;
-  if (recent.mine > 0) return { ok: true, again: true };
+  if (recent.mine >= MAX_PER_BROWSER) return { ok: true, again: true };
   if (recent.network >= MAX_PER_IP_PER_HOUR) return { error: "Too many check-ins from this network. Try again later." };
 
   await recordCheckin({
