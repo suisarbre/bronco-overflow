@@ -193,7 +193,25 @@ function client(): postgres.Sql {
   return globalForDb.sql;
 }
 
+const REACH_TIMEOUT_MS = 8_000;
 const SCHEMA_TIMEOUT_MS = 15_000;
+
+/** Where we connect, for error messages: host, database, and options — never credentials. */
+function describeTarget(raw: string | undefined): string {
+  try {
+    const url = new URL(connectionString(raw ?? ""));
+    return `${url.hostname}:${url.port || 5432}${url.pathname}${url.search}`;
+  } catch {
+    return "(DATABASE_URL isn't a valid URL)";
+  }
+}
+
+function withTimeout<T>(work: Promise<T>, ms: number, message: string): Promise<T> {
+  return Promise.race([
+    work,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
+  ]);
+}
 
 /**
  * Applies the schema, retrying once: two instances starting together can both
@@ -201,20 +219,30 @@ const SCHEMA_TIMEOUT_MS = 15_000;
  * duplicate-object error. An advisory lock would be tidier, but Neon's pooled
  * endpoint runs PgBouncer, where a session lock can outlive the client and
  * wedge every later request.
+ *
+ * Errors say which step failed, where it tried to connect, and which commit is
+ * running, so one line from the logs is enough to tell what's wrong.
  */
 async function applySchema(sql: postgres.Sql): Promise<void> {
+  const where = describeTarget(process.env.DATABASE_URL);
+  const build = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? "local";
+
+  const started = Date.now();
+  try {
+    await withTimeout(sql`SELECT 1`, REACH_TIMEOUT_MS, `no answer after ${REACH_TIMEOUT_MS / 1000}s`);
+  } catch (err) {
+    throw new Error(`[db ${build}] Can't reach ${where}: ${(err as Error).message}`, { cause: err });
+  }
+  const reachedIn = Date.now() - started;
+
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       // Never let one stuck statement hang every page on the site.
-      await Promise.race([
+      await withTimeout(
         sql.unsafe(SCHEMA),
-        new Promise((_, reject) =>
-          setTimeout(
-            () => reject(new Error("Timed out setting up the database schema")),
-            SCHEMA_TIMEOUT_MS,
-          ),
-        ),
-      ]);
+        SCHEMA_TIMEOUT_MS,
+        `[db ${build}] Reached ${where} in ${reachedIn}ms, but setting up the schema timed out`,
+      );
       return;
     } catch (err) {
       const code = (err as { code?: string }).code;
