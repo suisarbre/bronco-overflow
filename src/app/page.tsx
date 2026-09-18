@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AskForm } from "@/components/AskForm";
 import { QuestionCard } from "@/components/QuestionCard";
+import { ScrollRow } from "@/components/ScrollRow";
 import { StatusBadge } from "@/components/StatusBadge";
 import { getVisitorId, isStaff } from "@/lib/identity";
 import { getMember } from "@/lib/members";
@@ -87,7 +88,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
           </form>
         </div>
 
-        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 text-sm [scrollbar-width:none]">
+        <ScrollRow className="-mx-4 flex gap-2 px-4 pb-2 text-sm">
           <Link
             href={href(current, { tag: undefined, page: undefined })}
             className={`shrink-0 rounded-full border px-3 py-1 ${
@@ -107,7 +108,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
               {t.group === "course" ? t.label.split(" · ")[0] : t.label}
             </Link>
           ))}
-        </div>
+        </ScrollRow>
 
         {(tag || search) && (
           <p className="text-sm text-muted">
