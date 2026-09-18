@@ -1,7 +1,7 @@
 import "server-only";
 import { COURSES, REASONS, YEARS, choiceLabel, type Choice } from "./checkin-options";
 import { db } from "./db";
-import { notifyDiscord } from "./notify";
+import { notifyDiscord, webhookFor } from "./notify";
 
 export const CAMPUS_TZ = "America/Los_Angeles";
 
@@ -144,7 +144,7 @@ export function checkinsCsv(rows: Checkin[]): string {
       .join(","),
   );
   // The byte-order mark makes Excel read the file as UTF-8.
-  return "﻿" + [header.join(","), ...lines].join("\r\n") + "\r\n";
+  return "\uFEFF" + [header.join(","), ...lines].join("\r\n") + "\r\n";
 }
 
 // ---------------------------------------------------------------------------
@@ -166,7 +166,7 @@ function topLine(list: Choice[], rows: Checkin[], pick: (c: Checkin) => string, 
  * Numbers only: no free-text answers go to Discord.
  */
 export async function sendCheckinSummariesIfDue(): Promise<void> {
-  if (!process.env.DISCORD_WEBHOOK_URL) return;
+  if (!webhookFor("checkins")) return;
   const yesterday = campusDayOffset(-1);
   const sql = await db();
 
@@ -193,6 +193,7 @@ export async function sendCheckinSummariesIfDue(): Promise<void> {
     const weekday = new Date(`${day}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" });
     const first = rows.filter((c) => c.first_visit).length;
     await notifyDiscord(
+      "checkins",
       `Check-ins for ${weekday} ${day}: ${rows.length}`,
       [
         `First visit: ${first}`,

@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import { signOut } from "./actions";
 import { MemberBadge } from "@/components/MemberBadge";
+import { TicketButton } from "@/components/TicketButton";
 import { getStaffRole } from "@/lib/identity";
 import { getMember } from "@/lib/members";
 import { moderationCount } from "@/lib/queries";
@@ -103,8 +104,10 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             <Link href="/login" className="underline-offset-2 hover:underline">
               Staff sign in
             </Link>
+            <TicketButton variant="link" />
           </p>
         </footer>
+        <TicketButton variant="floating" />
       </body>
     </html>
   );

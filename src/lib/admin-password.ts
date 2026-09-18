@@ -2,7 +2,7 @@ import "server-only";
 import { randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { newCode } from "./codes";
-import { notifyDiscord } from "./notify";
+import { notifyDiscord, webhookFor } from "./notify";
 import { db } from "./db";
 import { readSecret, writeSecret } from "./secrets";
 
@@ -44,7 +44,7 @@ export async function adminLoginPossible(): Promise<boolean> {
 
 /** Generates a new password, stores its hash, and posts it to Discord. */
 export async function rotateAdminPassword(): Promise<boolean> {
-  if (!process.env.DISCORD_WEBHOOK_URL) return false;
+  if (!webhookFor("password")) return false;
   const password = newCode(4);
   await writeSecret("admin_password", await hash(password));
   await announce(password, "rotated by hand");
@@ -61,7 +61,7 @@ export async function adminPasswordAge(): Promise<Date | null> {
  * posts to Discord.
  */
 export async function rotateAdminPasswordIfDue(days: number): Promise<void> {
-  if (days <= 0 || !process.env.DISCORD_WEBHOOK_URL) return;
+  if (days <= 0 || !webhookFor("password")) return;
 
   // Cheap read first: nearly every call stops here.
   const current = await readSecret("admin_password");
@@ -81,6 +81,7 @@ export async function rotateAdminPasswordIfDue(days: number): Promise<void> {
 
 function announce(password: string, note: string): Promise<void> {
   return notifyDiscord(
+    "password",
     "New tutor password",
     `Log in at /admin with:  ${password}\nThe previous password stopped working just now (${note}).`,
   );

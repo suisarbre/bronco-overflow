@@ -44,7 +44,14 @@ deliberately small. See [Contributing](#contributing) before adding anything.
   higher posting limits or skip the review queue. Handing out a new code keeps the badge and the posts but
   signs out whoever had the old one — that's the fix if a code leaks. Badges are a label, not a power: they
   can't moderate anything.
-- **Discord alerts** for reports, held posts, auto-hides, and (optionally) every new post.
+- **Discord alerts** for reports, held posts, auto-hides, and (optionally) every new post. Each kind can go
+  to its own channel — see [Discord channels](#discord-channels).
+- **Report a bug**: a small floating button on wide screens and a footer link on phones and tablets (a
+  floating button there would cover the answer box). People pick Bug / Suggestion / Something else and
+  write a note; the page they were on and a short browser summary ("Chrome 128 · Windows") are attached.
+  No contact info is asked for — they get a ticket number (#12) to mention at the desk. Staff see tickets
+  on `/admin` and can close, reopen, or delete them; closed ones are deleted after 180 days. Limit: 3 per
+  browser per 10 minutes.
 - **Photos**: resized in the browser to max 1600px WebP before upload, so most are a few hundred KB.
   The server caps them at 2 MB and checks the file's real type, not what the browser claims.
 - **`/qr`**: a printable poster with a QR code pointing at the site.
@@ -156,12 +163,28 @@ the Vercel dashboard.
    break-glass key; day-to-day, tutors use the rotating password from Discord.
 6. **Discord alerts and the rotating password.** Create a webhook in your Discord channel settings
    (Integrations → Webhooks) and set `DISCORD_WEBHOOK_URL`. Use a channel only tutors can read — the tutor
-   password is posted there.
+   password is posted there. To split alerts across channels, see [Discord channels](#discord-channels).
 7. **Redeploy** from the Deployments tab. After that, every push to `main` deploys automatically.
 8. Open `https://<project>.vercel.app/qr` and print the poster.
 
 > If your database variable has another name (for example only `POSTGRES_URL` exists), copy the same value
 > into `DATABASE_URL`. Prefer Neon's **pooled** connection string (the host contains `-pooler`).
+
+### Discord channels
+
+One webhook is enough: everything goes to `DISCORD_WEBHOOK_URL`. To send a kind of alert to its own
+channel, create a webhook there and set its variable. Anything unset (or blank) falls back to the main one.
+`/admin` shows where each kind currently goes.
+
+| Variable | What goes there |
+| --- | --- |
+| `DISCORD_WEBHOOK_POSTS` | New questions and answers |
+| `DISCORD_WEBHOOK_MODERATION` | Reports, auto-hides, posts waiting for review, "board paused" |
+| `DISCORD_WEBHOOK_PASSWORD` | The new tutor password — **must be a tutors-only channel** |
+| `DISCORD_WEBHOOK_CHECKINS` | The daily check-in summary |
+| `DISCORD_WEBHOOK_TICKETS` | Bug reports and tickets |
+
+Changing a variable needs a redeploy. The list lives in [src/lib/channels.ts](src/lib/channels.ts).
 
 ## Running it locally
 

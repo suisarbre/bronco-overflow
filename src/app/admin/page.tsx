@@ -3,19 +3,23 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Checkins } from "./Checkins";
 import { Members } from "./Members";
+import { Tickets } from "./Tickets";
 import { DefaultForm, EmergencyButtons, KeyedAction, OverrideForm } from "./SettingControls";
 import { WordFilter } from "./WordFilter";
 import { approvePost, deleteByPoster, hidePost, rotatePassword } from "./actions";
 import { deleteAnswer, deleteQuestion } from "@/app/actions";
 import { adminPasswordAge } from "@/lib/admin-password";
+import { CHANNELS, CHANNEL_KEYS } from "@/lib/channels";
 import { checkinStats, recentCheckins } from "@/lib/checkins";
 import { timeAgo } from "@/lib/format";
 import { getStaffRole } from "@/lib/identity";
 import { listMembers } from "@/lib/members";
 import { getWordLists } from "@/lib/moderation";
+import { webhookFor } from "@/lib/notify";
 import { moderationQueue, recentPosts, type ModerationRow } from "@/lib/queries";
 import { FILTER_MODE_LABELS, SETTINGS, SETTING_KEYS, type SettingState } from "@/lib/settings";
 import { getSettingStates } from "@/lib/settings-store";
+import { listTickets } from "@/lib/tickets";
 
 export const metadata: Metadata = { title: "Admin", robots: { index: false } };
 
@@ -99,7 +103,7 @@ export default async function AdminPage() {
   if (!role) redirect("/login");
 
   const admin = role === "admin";
-  const [states, words, queue, recent, passwordSetAt, members, visits, latestVisits] = await Promise.all([
+  const [states, words, queue, recent, passwordSetAt, members, visits, latestVisits, tickets] = await Promise.all([
     getSettingStates(),
     getWordLists(),
     moderationQueue(),
@@ -108,9 +112,10 @@ export default async function AdminPage() {
     admin ? listMembers() : [],
     checkinStats(),
     recentCheckins(),
+    listTickets(),
   ]);
   const rotationDays = states.adminPasswordDays.value;
-  const webhookMissing = !process.env.DISCORD_WEBHOOK_URL;
+  const webhookMissing = !webhookFor("password");
   const overrides = SETTING_KEYS.filter((key) => states[key].override);
 
   return (
@@ -187,7 +192,7 @@ export default async function AdminPage() {
       <Card title="Tutor password">
         <p className="text-sm text-muted">
           {webhookMissing
-            ? "Set DISCORD_WEBHOOK_URL to let the server rotate the password and post the new one to Discord. Until then, the ADMIN_PASSWORD environment variable is the only way in."
+            ? "Set DISCORD_WEBHOOK_URL (or DISCORD_WEBHOOK_PASSWORD) to let the server rotate the password and post the new one to Discord. Until then, the ADMIN_PASSWORD environment variable is the only way in."
             : rotationDays > 0
               ? `A new password goes to Discord every ${rotationDays} day${rotationDays === 1 ? "" : "s"}. Change that under "Default settings" above.`
               : "Rotation is off. Turn it on under “Default settings” above."}
@@ -208,6 +213,29 @@ export default async function AdminPage() {
       )}
 
       {admin && (
+      <Card title="Discord channels">
+        <p className="text-sm text-muted">
+          Each kind of alert can go to its own channel: set its variable in Vercel (Settings → Environment
+          Variables) and redeploy. Anything unset goes to <code>DISCORD_WEBHOOK_URL</code>.
+        </p>
+        <ul className="divide-y divide-line text-sm">
+          {CHANNEL_KEYS.map((key) => {
+            const own = !!process.env[CHANNELS[key].env]?.trim();
+            const any = !!webhookFor(key);
+            return (
+              <li key={key} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 py-2">
+                <span>{CHANNELS[key].label}</span>
+                <span className={`font-mono text-xs ${any ? "text-muted" : "text-danger"}`}>
+                  {own ? CHANNELS[key].env : any ? "DISCORD_WEBHOOK_URL" : "not sent (no webhook)"}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </Card>
+      )}
+
+      {admin && (
       <Card title="Badge holders">
         <Members members={members} />
       </Card>
@@ -215,6 +243,10 @@ export default async function AdminPage() {
 
       <Card title="Word filter">
         <WordFilter blocked={words.blocked} allowed={words.allowed} />
+      </Card>
+
+      <Card title={`Tickets (${tickets.open.length} open)`} id="tickets">
+        <Tickets open={tickets.open} closed={tickets.closed} />
       </Card>
 
       <Card title={`Needs a look (${queue.length})`}>

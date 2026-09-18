@@ -20,7 +20,7 @@ export default async function LoginPage() {
       <LoginForm />
       {!staffLoginPossible && (
         <p className="text-xs text-muted">
-          No tutor password exists yet. Set <code>ADMIN_PASSWORD</code> or <code>DISCORD_WEBHOOK_URL</code> to
+          No tutor password exists yet. Set <code>ADMIN_PASSWORD</code> or a Discord webhook to
           enable staff sign-in.
         </p>
       )}

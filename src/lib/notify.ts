@@ -1,9 +1,19 @@
 import "server-only";
 import { headers } from "next/headers";
 
-/** Posts a message to the tutors' Discord channel, if a webhook is configured. */
-export async function notifyDiscord(title: string, body: string, path?: string): Promise<void> {
-  const webhook = process.env.DISCORD_WEBHOOK_URL;
+import { CHANNELS, type Channel } from "./channels";
+
+/**
+ * The webhook for one kind of alert: its own variable if set, otherwise the
+ * catch-all DISCORD_WEBHOOK_URL. Blank counts as unset.
+ */
+export function webhookFor(channel: Channel): string | null {
+  return process.env[CHANNELS[channel].env]?.trim() || process.env.DISCORD_WEBHOOK_URL?.trim() || null;
+}
+
+/** Posts a message to the Discord channel for this kind of alert, if one is configured. */
+export async function notifyDiscord(channel: Channel, title: string, body: string, path?: string): Promise<void> {
+  const webhook = webhookFor(channel);
   if (!webhook) return;
 
   const site = path ? await siteUrl() : null;

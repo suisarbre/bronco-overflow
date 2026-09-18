@@ -274,6 +274,7 @@ export async function createQuestion(_prev: FormState, form: FormData): Promise<
   if (pending || settings.notifyAllPosts) {
     after(
       notifyDiscord(
+        pending ? "moderation" : "posts",
         pending && verdict.action === "review" ? `Question waiting for review (${verdict.reason})` : "New question",
         title,
         `/q/${row.id}`,
@@ -341,6 +342,7 @@ export async function createAnswer(_prev: FormState, form: FormData): Promise<Fo
   if (pending || settings.notifyAllPosts) {
     after(
       notifyDiscord(
+        pending ? "moderation" : "posts",
         pending && verdict.action === "review" ? `Answer waiting for review (${verdict.reason})` : "New answer",
         cleanBody,
         `/q/${questionId}`,
@@ -440,7 +442,7 @@ export async function updateQuestion(_prev: FormState, form: FormData): Promise<
     WHERE id = ${id}
   `);
   if (result.ok && held) {
-    after(notifyDiscord(`Edited question waiting for review (${held})`, title, `/q/${id}`));
+    after(notifyDiscord("moderation", `Edited question waiting for review (${held})`, title, `/q/${id}`));
   }
   return held && result.ok ? { ...result, pending: true } : result;
 }
@@ -474,7 +476,7 @@ export async function updateAnswer(_prev: FormState, form: FormData): Promise<Fo
     if (row) await recountAnswers(tx, row.question_id);
   });
   if (result.ok && held) {
-    after(notifyDiscord(`Edited answer waiting for review (${held})`, cleanBody, `/q/${id}`));
+    after(notifyDiscord("moderation", `Edited answer waiting for review (${held})`, cleanBody, `/q/${id}`));
   }
   return held && result.ok ? { ...result, pending: true } : result;
 }
@@ -520,6 +522,7 @@ export async function reportPost(type: PostType, id: number, reason: string): Pr
   }
   after(
     notifyDiscord(
+      "moderation",
       hide ? `Auto-hidden after ${row.reports} reports` : `Reported (${reason}) — ${row.reports} so far`,
       row.label,
       `/q/${row.question_id}`,

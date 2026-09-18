@@ -3,6 +3,7 @@
 import { refresh, revalidatePath } from "next/cache";
 import { rotateAdminPassword } from "@/lib/admin-password";
 import { deleteCheckin } from "@/lib/checkins";
+import { deleteTicket, setTicketOpen } from "@/lib/tickets";
 import { db } from "@/lib/db";
 import { isAdmin, isStaff } from "@/lib/identity";
 import { addWord, isUsableWord, removeWord, runFilter } from "@/lib/moderation";
@@ -95,7 +96,7 @@ export async function revertAllOverrides(): Promise<void> {
 export async function stopEverything(): Promise<void> {
   if (!(await requireStaff())) return;
   await setOverride("readOnly", true, null);
-  await notifyDiscord("Board paused", "A tutor switched on read-only mode.");
+  await notifyDiscord("moderation", "Board paused", "A tutor switched on read-only mode.");
   revalidatePath("/");
   revalidatePath("/admin");
   refresh();
@@ -302,6 +303,23 @@ export async function deleteByPoster(scope: "owner" | "ip", value: string): Prom
 export async function removeCheckin(id: number): Promise<void> {
   if (!(await requireStaff()) || !Number.isSafeInteger(id)) return;
   await deleteCheckin(id);
+  revalidatePath("/admin");
+  refresh();
+}
+
+// ---------------------------------------------------------------------------
+// Tickets
+
+export async function setTicketStatus(id: number, open: boolean): Promise<void> {
+  if (!(await requireStaff()) || !Number.isSafeInteger(id)) return;
+  await setTicketOpen(id, open);
+  revalidatePath("/admin");
+  refresh();
+}
+
+export async function removeTicket(id: number): Promise<void> {
+  if (!(await requireStaff()) || !Number.isSafeInteger(id)) return;
+  await deleteTicket(id);
   revalidatePath("/admin");
   refresh();
 }

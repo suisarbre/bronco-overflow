@@ -162,6 +162,20 @@ CREATE TABLE IF NOT EXISTS checkin_summaries (
   sent_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Bug reports and suggestions from the "Report a bug" button. Anonymous like
+-- everything else: the page and a short browser/device summary, no contact.
+CREATE TABLE IF NOT EXISTS tickets (
+  id         SERIAL PRIMARY KEY,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  kind       TEXT NOT NULL,
+  body       TEXT NOT NULL,
+  page       TEXT NOT NULL DEFAULT '',
+  device     TEXT NOT NULL DEFAULT '',
+  status     TEXT NOT NULL DEFAULT 'open',
+  closed_at  TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS tickets_status_idx ON tickets (status, created_at DESC);
+
 -- Columns added after the first deploy. CREATE TABLE only runs on an empty
 -- database, so every new column also needs a line here to reach one that
 -- already has data. These are cheap no-ops once applied.
