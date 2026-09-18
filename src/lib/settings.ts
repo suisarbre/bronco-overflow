@@ -13,6 +13,7 @@ export type Settings = {
   reportThreshold: number;
   notifyAllPosts: boolean;
   adminPasswordDays: number;
+  checkinSummary: boolean;
 };
 export type SettingKey = keyof Settings;
 
@@ -67,6 +68,12 @@ export const SETTINGS: { [K in SettingKey]: Definition<K> } = {
     help: "The server picks a new password and posts it to Discord. 0 turns rotation off. Needs a Discord webhook.",
     fallback: 7,
     parse: (v) => (Number.isInteger(v) && (v as number) >= 0 && (v as number) <= 90 ? (v as number) : undefined),
+  },
+  checkinSummary: {
+    label: "Daily check-in summary on Discord",
+    help: "Each morning, yesterday's walk-in totals go to Discord (numbers only). Needs a Discord webhook.",
+    fallback: true,
+    parse: bool,
   },
 };
 

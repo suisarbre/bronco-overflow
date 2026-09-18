@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Checkins } from "./Checkins";
 import { Members } from "./Members";
 import { DefaultForm, EmergencyButtons, KeyedAction, OverrideForm } from "./SettingControls";
 import { WordFilter } from "./WordFilter";
 import { approvePost, deleteByPoster, hidePost, rotatePassword } from "./actions";
 import { deleteAnswer, deleteQuestion } from "@/app/actions";
 import { adminPasswordAge } from "@/lib/admin-password";
+import { checkinStats, recentCheckins } from "@/lib/checkins";
 import { timeAgo } from "@/lib/format";
 import { getStaffRole } from "@/lib/identity";
 import { listMembers } from "@/lib/members";
@@ -24,9 +26,9 @@ function describe(state: SettingState): string {
   return String(value);
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+function Card({ title, id, children }: { title: string; id?: string; children: React.ReactNode }) {
   return (
-    <section className="space-y-4 rounded-2xl border border-line bg-card p-4 sm:p-5">
+    <section id={id} className="scroll-mt-4 space-y-4 rounded-2xl border border-line bg-card p-4 sm:p-5">
       <h2 className="text-lg font-bold">{title}</h2>
       {children}
     </section>
@@ -97,13 +99,15 @@ export default async function AdminPage() {
   if (!role) redirect("/login");
 
   const admin = role === "admin";
-  const [states, words, queue, recent, passwordSetAt, members] = await Promise.all([
+  const [states, words, queue, recent, passwordSetAt, members, visits, latestVisits] = await Promise.all([
     getSettingStates(),
     getWordLists(),
     moderationQueue(),
     recentPosts(),
     admin ? adminPasswordAge() : null,
     admin ? listMembers() : [],
+    checkinStats(),
+    recentCheckins(),
   ]);
   const rotationDays = states.adminPasswordDays.value;
   const webhookMissing = !process.env.DISCORD_WEBHOOK_URL;
@@ -131,6 +135,10 @@ export default async function AdminPage() {
             The board is read-only right now. Nobody can post, answer, edit, or vote.
           </p>
         )}
+      </Card>
+
+      <Card title="Check-ins" id="checkins">
+        <Checkins stats={visits} recent={latestVisits} />
       </Card>
 
       <Card title="Temporary changes">

@@ -1,7 +1,8 @@
 # Bronco Overflow
 
 An anonymous question board for Cal Poly Pomona CS tutoring. Students scan a QR code, ask a question,
-and answer each other — no account, no login.
+and answer each other — no account, no login. A second QR code at the desk handles walk-in check-ins, so
+the department gets traffic numbers without a paper sign-in sheet.
 
 The whole thing runs on free tiers. **Keeping it free and simple is the point**, so the scope below is
 deliberately small. See [Contributing](#contributing) before adding anything.
@@ -48,8 +49,26 @@ deliberately small. See [Contributing](#contributing) before adding anything.
   The server caps them at 2 MB and checks the file's real type, not what the browser claims.
 - **`/qr`**: a printable poster with a QR code pointing at the site.
 
+### Walk-in check-ins
+
+- **`/checkin`** (poster at **`/qr/checkin`**): year, class, what they need help with, and whether it's their
+  first time. "Other" opens a short text box. No checkout.
+- **Anonymous on purpose.** No name, student ID, browser id, or IP is stored with a check-in — just the
+  answers and the time. Names attached to tutoring visits would be student records, which belong in a
+  university-approved system, not on free hosting. (Hashing names doesn't fix that: with a class roster
+  they can be matched back in seconds.)
+- **No double counting**: scanning again from the same browser within 3 hours says "already checked in".
+  That browser id is kept for two days in the rate-limit table only, not with the check-in.
+- The phone remembers year and class (on the device only), so the next visit is a couple of taps.
+- **For staff** (tutors and admins), on `/admin`: counts for today / 7 / 30 days, breakdowns by class,
+  reason, hour, weekday, and year, a **CSV download** for any date range (opens in Excel), and a way to
+  remove a joke entry.
+- **Daily Discord summary**: the morning after, the totals for the day (numbers only, never the typed
+  text). Like the password rotation, it runs after a page view, so there's no cron; after a quiet stretch it
+  catches up on up to a week.
+
 Not in scope on purpose: accounts and logins, video uploads, replies/comment threads, notifications,
-private messaging, rich-text editing, analytics dashboards. Replies in particular would mean a third kind of
+private messaging, rich-text editing, visitor tracking or analytics beyond the check-in counts. Replies in particular would mean a third kind of
 post to report, hide, edit, delete and badge, and people would then expect notifications — which cost money.
 Answers plus upvotes and "solution" cover it at this size.
 
@@ -69,6 +88,7 @@ limits do the real work.
 | Wrong recovery codes | 20 per IP / 15 min |
 | Failed admin logins | 5 per IP / 15 min, 30 site-wide / 15 min |
 | Reports | 30 per IP / 10 min |
+| Check-ins | 1 per browser / 3 hours (repeats say "already checked in"), 300 per IP / hour |
 
 Duplicate rule: the exact same text within an hour is rejected — always from the same browser, but from the
 same IP only when the text is 60+ characters, so two students posting "Thank you!" don't collide.
@@ -94,6 +114,7 @@ site read-only until a tutor turns it back on.
 | Reports before auto-hide | 3 |
 | Discord alert for every new post | On |
 | New tutor password every … days | 7 (0 turns rotation off) |
+| Daily check-in summary on Discord | On |
 
 Badge holders with "higher limits" get five times the per-browser posting allowance and skip the per-network
 photo cap; the site-wide daily photo budget still applies to everyone.
@@ -155,6 +176,8 @@ Without `BLOB_READ_WRITE_TOKEN`, photos are saved to `public/uploads/` in develo
 ## Where things live
 
 - Classes and tags: [src/lib/tags.ts](src/lib/tags.ts) — don't rename an `id` that posts already use
+- Check-in questions (years, reasons; classes come from the tags):
+  [src/lib/checkin-options.ts](src/lib/checkin-options.ts) — same rule, the `id` is what's stored
 - Rate limits and length limits: [src/app/actions.ts](src/app/actions.ts)
 - Settings and their defaults: [src/lib/settings.ts](src/lib/settings.ts)
 - Roles and sessions: [src/lib/identity.ts](src/lib/identity.ts), [src/lib/admin-password.ts](src/lib/admin-password.ts)
@@ -211,8 +234,8 @@ boring changes are the good ones.
 
 **Please don't**
 
-- Add accounts, logins, or anything that collects personal data. We store no emails, names, or raw IPs
-  (IP addresses are only ever stored as salted hashes, for rate limits).
+- Add accounts, logins, or anything that collects personal data — including names on check-ins. We store
+  no emails, names, or raw IPs (IP addresses are only ever stored as salted hashes, for rate limits).
 - Add a feature "because other Q&A sites have it". If tutors haven't asked for it twice, it can wait.
 - Add a background job, cron, queue, or analytics service.
 - Reformat files you aren't otherwise changing.

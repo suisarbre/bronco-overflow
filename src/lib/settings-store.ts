@@ -2,6 +2,7 @@ import "server-only";
 import { after } from "next/server";
 import { cache } from "react";
 import { rotateAdminPasswordIfDue } from "./admin-password";
+import { sendCheckinSummariesIfDue } from "./checkins";
 import { db } from "./db";
 import {
   SETTINGS,
@@ -52,8 +53,12 @@ export const getSettingStates = cache(async function getSettingStates(): Promise
 export const getSettings = cache(async function getSettings(): Promise<Settings> {
   const states = await getSettingStates();
   const settings = Object.fromEntries(SETTING_KEYS.map((k) => [k, states[k].value])) as Settings;
-  // Pages render first; the password check (and any rotation) happens afterwards.
+  // Pages render first; the password check (and any rotation) and the daily
+  // check-in summary happen afterwards.
   after(rotateAdminPasswordIfDue(settings.adminPasswordDays));
+  if (settings.checkinSummary) {
+    after(sendCheckinSummariesIfDue().catch((err) => console.error("check-in summary failed", err)));
+  }
   return settings;
 });
 

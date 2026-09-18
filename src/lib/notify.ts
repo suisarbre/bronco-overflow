@@ -6,7 +6,8 @@ export async function notifyDiscord(title: string, body: string, path?: string):
   const webhook = process.env.DISCORD_WEBHOOK_URL;
   if (!webhook) return;
 
-  const link = path ? `${await siteUrl()}${path}` : undefined;
+  const site = path ? await siteUrl() : null;
+  const link = site ? `${site}${path}` : undefined;
   try {
     await fetch(webhook, {
       method: "POST",
@@ -34,10 +35,18 @@ function clamp(text: string, max: number): string {
   return single.length > max ? `${single.slice(0, max - 1)}…` : single;
 }
 
-async function siteUrl(): Promise<string> {
-  if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "");
-  const h = await headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  return `${proto}://${host}`;
+async function siteUrl(): Promise<string | null> {
+  const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/$/, "");
+  if (configured) return configured;
+  try {
+    const h = await headers();
+    const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+    const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+    return `${proto}://${host}`;
+  } catch {
+    // No request to read (e.g. the daily summary, which runs after the page is sent).
+    // Vercel sets this one itself.
+    const vercel = process.env.VERCEL_PROJECT_PRODUCTION_URL;
+    return vercel ? `https://${vercel}` : null;
+  }
 }

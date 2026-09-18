@@ -2,6 +2,7 @@
 
 import { refresh, revalidatePath } from "next/cache";
 import { rotateAdminPassword } from "@/lib/admin-password";
+import { deleteCheckin } from "@/lib/checkins";
 import { db } from "@/lib/db";
 import { isAdmin, isStaff } from "@/lib/identity";
 import { addWord, isUsableWord, removeWord, runFilter } from "@/lib/moderation";
@@ -290,6 +291,17 @@ export async function deleteByPoster(scope: "owner" | "ip", value: string): Prom
   });
   await deleteImages(images);
   revalidatePath("/");
+  revalidatePath("/admin");
+  refresh();
+}
+
+// ---------------------------------------------------------------------------
+// Check-ins
+
+/** Removes one check-in, e.g. a joke entry from someone who photographed the QR code. */
+export async function removeCheckin(id: number): Promise<void> {
+  if (!(await requireStaff()) || !Number.isSafeInteger(id)) return;
+  await deleteCheckin(id);
   revalidatePath("/admin");
   refresh();
 }

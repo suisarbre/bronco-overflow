@@ -140,6 +140,28 @@ CREATE TABLE IF NOT EXISTS filter_words (
   PRIMARY KEY (word, list)
 );
 
+-- Walk-in check-ins at the tutoring desk, for the department's traffic numbers.
+-- Deliberately anonymous: no name, browser id, or IP, just what and when.
+-- "Other" answers keep the typed text in *_other.
+CREATE TABLE IF NOT EXISTS checkins (
+  id           SERIAL PRIMARY KEY,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  year         TEXT NOT NULL,
+  year_other   TEXT,
+  course       TEXT NOT NULL,
+  course_other TEXT,
+  reason       TEXT NOT NULL,
+  reason_other TEXT,
+  first_visit  BOOLEAN NOT NULL
+);
+CREATE INDEX IF NOT EXISTS checkins_created_idx ON checkins (created_at);
+
+-- Campus days whose check-in totals were already posted to Discord.
+CREATE TABLE IF NOT EXISTS checkin_summaries (
+  day     DATE PRIMARY KEY,
+  sent_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Columns added after the first deploy. CREATE TABLE only runs on an empty
 -- database, so every new column also needs a line here to reach one that
 -- already has data. These are cheap no-ops once applied.
