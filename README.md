@@ -23,6 +23,9 @@ deliberately small. See [Contributing](#contributing) before adding anything.
   unlocks that post on another browser or device. Only a hash of the code is stored.
 - **Reporting**: when enough different browsers report a post (3 by default), it is hidden for a tutor to
   review — hidden, not deleted.
+- **Signing in** happens at `/login`, with one box for everything: the admin password, the tutor password,
+  or a badge code. The header then shows **ADMIN**, **TUTOR**, or the person's badge. Students never need to
+  sign in.
 - **Tutor tools** at `/admin`: an emergency read-only switch, temporary setting changes that expire on
   their own, the word filter, and a review queue with approve / hide / delete and bulk delete.
 - **Two staff logins.** Signing in with `ADMIN_PASSWORD` makes you an **admin**; signing in with the
@@ -33,10 +36,11 @@ deliberately small. See [Contributing](#contributing) before adding anything.
   channel; only its hash is stored. `ADMIN_PASSWORD` stays valid as a break-glass key. Rotation is skipped
   entirely when no Discord webhook is set, so nobody gets locked out.
 - **Badge holders**: an admin can create a badge (say "Teacher", in one of five colors) and hand out its
-  code. Posts made while signed in with that code carry the badge, and the code also lets that person edit
-  those posts from another device. Per badge holder, an admin can allow higher posting limits or skip the
-  review queue. Handing out a new code keeps the badge and the posts but signs out whoever had the old one —
-  that's the fix if a code leaks. Badges are a label, not a power: they can't moderate anything.
+  code, which they enter at `/login`. Posts made while signed in with that code carry the badge, and the
+  code also lets that person edit those posts from another device. Per badge holder, an admin can allow
+  higher posting limits or skip the review queue. Handing out a new code keeps the badge and the posts but
+  signs out whoever had the old one — that's the fix if a code leaks. Badges are a label, not a power: they
+  can't moderate anything.
 - **Discord alerts** for reports, held posts, auto-hides, and (optionally) every new post.
 - **Photos**: resized in the browser to max 1600px WebP before upload, so most are a few hundred KB.
   The server caps them at 2 MB and checks the file's real type, not what the browser claims.

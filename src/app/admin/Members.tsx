@@ -98,7 +98,7 @@ export function Members({ members }: { members: Member[] }) {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted">
-        A badge holder signs in with their code at <code className="rounded bg-code px-1">/recover</code>. The badge
+        A badge holder signs in with their code at <code className="rounded bg-code px-1">/login</code>. The badge
         shows on everything they post while signed in, and their code also lets them edit those posts from another
         device. Handing out a new code keeps their badge and posts, and signs out whoever had the old one.
       </p>

@@ -13,7 +13,7 @@ import {
   logInAdmin,
   logOutAdmin,
 } from "@/lib/identity";
-import { getMember, logInMember, type Member } from "@/lib/members";
+import { getMember, logInMember, logOutMember, type Member } from "@/lib/members";
 import { isDuplicate, moderate } from "@/lib/moderation";
 import { notifyDiscord } from "@/lib/notify";
 import { REPORT_REASONS } from "@/lib/report-reasons";
@@ -709,7 +709,8 @@ export async function deleteAnswer(id: number): Promise<void> {
 // ---------------------------------------------------------------------------
 // Admin
 
-export async function adminLogin(_prev: FormState, form: FormData): Promise<FormState> {
+/** One box for every sign-in: the admin or tutor password, or a badge holder's code. */
+export async function signIn(_prev: FormState, form: FormData): Promise<FormState> {
   const ipHash = await getIpHash();
   const activity = await recentActivity({ ipHash });
   if (
@@ -719,15 +720,17 @@ export async function adminLogin(_prev: FormState, form: FormData): Promise<Form
     return { error: "Too many attempts. Try again in 15 minutes." };
   }
 
-  const ok = await logInAdmin(text(form, "password"));
-  if (!ok) {
-    await logActivity("login_fail", { ipHash });
-    return { error: "Wrong password." };
-  }
-  redirect("/");
+  const secret = text(form, "password");
+  if (await logInAdmin(secret)) redirect("/admin");
+  if (await logInMember(secret)) redirect("/");
+
+  await logActivity("login_fail", { ipHash });
+  return { error: "That password or code didn't work." };
 }
 
-export async function adminLogout(): Promise<void> {
+/** Signs out of everything on this browser: staff session and badge. */
+export async function signOut(): Promise<void> {
   await logOutAdmin();
+  await logOutMember();
   redirect("/");
 }

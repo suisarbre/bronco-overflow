@@ -1,8 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
-import { adminLogout } from "./actions";
+import { signOut } from "./actions";
+import { MemberBadge } from "@/components/MemberBadge";
 import { getStaffRole } from "@/lib/identity";
+import { getMember } from "@/lib/members";
 import { getSettings } from "@/lib/settings-store";
 import "./globals.css";
 
@@ -32,7 +34,7 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const [role, settings] = await Promise.all([getStaffRole(), getSettings()]);
+  const [role, member, settings] = await Promise.all([getStaffRole(), getMember(), getSettings()]);
 
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
@@ -45,12 +47,28 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               </span>
               Bronco Overflow
             </Link>
-            {role && (
+            {(role || member) && (
               <span className="flex items-center gap-2 text-xs">
-                <Link href="/admin" className="rounded bg-accent px-1.5 py-0.5 font-semibold text-on-accent">
-                  ADMIN
-                </Link>
-                <form action={adminLogout}>
+                {member && (
+                  // A light chip behind the badge keeps its colors readable on the green header.
+                  <span className="rounded-full bg-card p-0.5" title="You're posting with this badge">
+                    <MemberBadge title={member.title} color={member.color} />
+                  </span>
+                )}
+                {role === "admin" && (
+                  <Link href="/admin" className="rounded bg-accent px-1.5 py-0.5 font-semibold text-on-accent">
+                    ADMIN
+                  </Link>
+                )}
+                {role === "tutor" && (
+                  <Link
+                    href="/admin"
+                    className="rounded bg-white px-1.5 py-0.5 font-semibold text-brand dark:bg-brand dark:text-on-brand"
+                  >
+                    TUTOR
+                  </Link>
+                )}
+                <form action={signOut}>
                   <button className="underline underline-offset-2 opacity-80 hover:opacity-100">Log out</button>
                 </form>
               </span>

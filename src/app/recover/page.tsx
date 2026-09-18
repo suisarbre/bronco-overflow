@@ -10,7 +10,7 @@ export default function RecoverPage() {
       <p className="text-sm leading-relaxed text-muted">
         Posts can be edited or deleted from the browser they were written in. On another browser or device,
         enter the recovery code you got when you posted and you&apos;ll be able to manage that post from here too.
-        If a tutor gave you a badge code, enter it here to sign in with your badge.
+        Got a badge code from a tutor? Sign in with it at <a href="/login" className="text-link underline">/login</a>.
       </p>
       <RecoverForm />
     </div>

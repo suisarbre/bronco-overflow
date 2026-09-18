@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { AdminLoginForm } from "./AdminLoginForm";
+import { redirect } from "next/navigation";
 import { Members } from "./Members";
 import { DefaultForm, EmergencyButtons, KeyedAction, OverrideForm } from "./SettingControls";
 import { WordFilter } from "./WordFilter";
 import { approvePost, deleteByPoster, hidePost, rotatePassword } from "./actions";
 import { deleteAnswer, deleteQuestion } from "@/app/actions";
-import { adminLoginPossible, adminPasswordAge } from "@/lib/admin-password";
+import { adminPasswordAge } from "@/lib/admin-password";
 import { timeAgo } from "@/lib/format";
 import { getStaffRole } from "@/lib/identity";
 import { listMembers } from "@/lib/members";
@@ -94,27 +94,7 @@ function PostRow({ row, admin }: { row: ModerationRow; admin: boolean }) {
 
 export default async function AdminPage() {
   const role = await getStaffRole();
-  if (!role) {
-    const canLogIn = await adminLoginPossible();
-    return (
-      <div className="mx-auto max-w-sm space-y-4 rounded-2xl border border-line bg-card p-6">
-        <h1 className="text-xl font-bold">Tutor login</h1>
-        {canLogIn ? (
-          <>
-            <p className="text-sm text-muted">
-              Signed-in tutors can moderate posts and change site settings. The current password is in the
-              tutors&apos; Discord channel.
-            </p>
-            <AdminLoginForm />
-          </>
-        ) : (
-          <p className="text-sm text-muted">
-            Set the <code>ADMIN_PASSWORD</code> environment variable to enable moderation.
-          </p>
-        )}
-      </div>
-    );
-  }
+  if (!role) redirect("/login");
 
   const admin = role === "admin";
   const [states, words, queue, recent, passwordSetAt, members] = await Promise.all([
