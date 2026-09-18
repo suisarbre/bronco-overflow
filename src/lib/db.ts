@@ -1,5 +1,10 @@
 import "server-only";
+import dns from "node:dns";
 import postgres from "postgres";
+
+// Neon hosts resolve to both IPv6 and IPv4, and Vercel functions can't open
+// outbound IPv6 connections: an IPv6 attempt just goes unanswered. Try IPv4 first.
+dns.setDefaultResultOrder("ipv4first");
 
 const SCHEMA = `
 -- Wait only briefly for locks: if another session is mid-DDL (or stuck), fail
