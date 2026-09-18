@@ -5,6 +5,7 @@ import { cache } from "react";
 import { AnswerForm } from "@/components/AnswerForm";
 import { EditButton, EditForm, Editable } from "@/components/EditPost";
 import { MemberBadge } from "@/components/MemberBadge";
+import { StaffBadge } from "@/components/StaffBadge";
 import { ReportButton } from "@/components/ReportButton";
 import { StatusBadge } from "@/components/StatusBadge";
 import { AcceptButton, DeleteButton, PinButton } from "@/components/PostControls";
@@ -53,11 +54,12 @@ function Byline({
   author: string;
   date: Date;
   edited: Date | null;
-  badge: { title: string | null; color: string | null };
+  badge: { title: string | null; color: string | null; staff: string | null };
   asker?: boolean;
 }) {
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5 text-sm text-muted">
+      <StaffBadge role={badge.staff} />
       <MemberBadge title={badge.title} color={badge.color} />
       {asker && (
         <span
@@ -114,7 +116,7 @@ export default async function QuestionPage({ params }: PageProps<"/q/[id]">) {
           {q.image_url && <Attachment url={q.image_url} />}
           <div className="flex flex-wrap items-center gap-3 border-t border-line pt-3">
             <VoteButton type="q" id={q.id} score={q.score} voted={q.voted} />
-            <Byline author={q.author} date={q.created_at} edited={q.edited_at} badge={{ title: q.badge_title, color: q.badge_color }} />
+            <Byline author={q.author} date={q.created_at} edited={q.edited_at} badge={{ title: q.badge_title, color: q.badge_color, staff: q.staff_role }} />
             <span className="ml-auto flex flex-wrap items-center gap-3">
               {staff && <PinButton type="q" id={q.id} pinned={q.pinned} />}
               {!q.is_mine && <ReportButton type="q" id={q.id} />}
@@ -154,7 +156,7 @@ export default async function QuestionPage({ params }: PageProps<"/q/[id]">) {
                     author={a.author}
                     date={a.created_at}
                     edited={a.edited_at}
-                    badge={{ title: a.badge_title, color: a.badge_color }}
+                    badge={{ title: a.badge_title, color: a.badge_color, staff: a.staff_role }}
                     asker={a.by_asker}
                   />
                   <span className="ml-auto flex flex-wrap items-center gap-3">

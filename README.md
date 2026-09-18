@@ -32,7 +32,8 @@ deliberately small. See [Contributing](#contributing) before adding anything.
 - **Two staff logins.** Signing in with `ADMIN_PASSWORD` makes you an **admin**; signing in with the
   rotating password makes you a **tutor**. Tutors do the day-to-day moderating. Admin-only: editing the
   defaults, managing badge holders, rotating the password by hand, and deleting everything from one network
-  (which on campus Wi-Fi can catch bystanders).
+  (which on campus Wi-Fi can catch bystanders). Posts written while signed in as staff are labeled
+  **ADMIN** or **TUTOR**; posts from before signing in stay unlabeled.
 - **Tutor password**: the server picks a new one every 7 days (configurable) and posts it to the Discord
   channel; only its hash is stored. `ADMIN_PASSWORD` stays valid as a break-glass key. Rotation is skipped
   entirely when no Discord webhook is set, so nobody gets locked out.
@@ -126,7 +127,9 @@ the Vercel dashboard.
    The first deploy shows an error page because there's no database yet. That's expected.
 3. **Add the database**: project → **Storage** → **Create Database** → **Neon** (Free) → connect it to the
    project. This sets `DATABASE_URL`.
-4. **Add photo storage**: same **Storage** tab → **Blob** → connect it. This sets `BLOB_READ_WRITE_TOKEN`.
+4. **Add photo storage**: same **Storage** tab → **Blob** → create a **public** store and connect it. This
+   sets `BLOB_READ_WRITE_TOKEN`. If photo uploads fail, try one while signed in as staff: the error then
+   says why (for example a missing token or a private store).
 5. **Set `ADMIN_PASSWORD`** under **Settings → Environment Variables**. Make it long. This is the
    break-glass key; day-to-day, tutors use the rotating password from Discord.
 6. **Discord alerts and the rotating password.** Create a webhook in your Discord channel settings

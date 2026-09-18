@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS questions (
   image_url          TEXT,
   owner_id           TEXT NOT NULL,
   member_id          INTEGER,
+  -- 'admin' or 'tutor' when staff wrote it, for the label on the post.
+  staff_role         TEXT,
   recovery_hash      TEXT,
   ip_hash            TEXT NOT NULL,
   score              INTEGER NOT NULL DEFAULT 0,
@@ -46,6 +48,7 @@ CREATE TABLE IF NOT EXISTS answers (
   image_url     TEXT,
   owner_id      TEXT NOT NULL,
   member_id     INTEGER,
+  staff_role    TEXT,
   recovery_hash TEXT,
   ip_hash       TEXT NOT NULL,
   score         INTEGER NOT NULL DEFAULT 0,
@@ -144,6 +147,8 @@ ALTER TABLE questions ADD COLUMN IF NOT EXISTS member_id INTEGER;
 ALTER TABLE questions ADD COLUMN IF NOT EXISTS pinned_at TIMESTAMPTZ;
 ALTER TABLE answers   ADD COLUMN IF NOT EXISTS member_id INTEGER;
 ALTER TABLE answers   ADD COLUMN IF NOT EXISTS pinned_at TIMESTAMPTZ;
+ALTER TABLE questions ADD COLUMN IF NOT EXISTS staff_role TEXT;
+ALTER TABLE answers   ADD COLUMN IF NOT EXISTS staff_role TEXT;
 `;
 
 const globalForDb = globalThis as unknown as {

@@ -9,10 +9,12 @@ import { db } from "@/lib/db";
 import {
   getIpHash,
   getOrCreateVisitorId,
+  getStaffRole,
   isStaff,
   logInAdmin,
   logOutAdmin,
 } from "@/lib/identity";
+import type { StaffRole } from "@/lib/admin-password";
 import { getMember, logInMember, logOutMember, type Member } from "@/lib/members";
 import { isDuplicate, moderate } from "@/lib/moderation";
 import { notifyDiscord } from "@/lib/notify";
@@ -99,7 +101,7 @@ function answerError(body: string, hasImage: boolean): string | null {
 // ---------------------------------------------------------------------------
 // Rate limits
 
-type Who = { visitorId: string; ipHash: string; member: Member | null };
+type Who = { visitorId: string; ipHash: string; member: Member | null; role: StaffRole | null };
 type ActivityKind = "post" | "upload" | "edit" | "login_fail" | "code_fail" | "report";
 
 async function whoAmI(): Promise<Who> {
@@ -107,6 +109,7 @@ async function whoAmI(): Promise<Who> {
     visitorId: await getOrCreateVisitorId(),
     ipHash: await getIpHash(),
     member: await getMember(),
+    role: await getStaffRole(),
   };
 }
 
@@ -184,7 +187,9 @@ async function storeImage(
     return { url };
   } catch (err) {
     console.error("image upload failed", err);
-    return { error: "Couldn't upload the image. Try again or post without it." };
+    // Students get a plain message; staff get the reason, since it's usually a setup problem.
+    const reason = err instanceof Error ? ` (${err.message})` : "";
+    return { error: `Couldn't upload the image. Try again or post without it.${who.role ? reason : ""}` };
   }
 }
 
@@ -258,10 +263,10 @@ export async function createQuestion(_prev: FormState, form: FormData): Promise<
   const code = newCode();
   const sql = await db();
   const [row] = await sql<{ id: number }[]>`
-    INSERT INTO questions (title, body, tag, author, image_url, owner_id, member_id, recovery_hash,
+    INSERT INTO questions (title, body, tag, author, image_url, owner_id, member_id, staff_role, recovery_hash,
                            ip_hash, status, status_reason)
     VALUES (${title}, ${body}, ${fields.tag}, ${nickname}, ${stored.url}, ${who.visitorId},
-            ${who.member?.id ?? null}, ${hashCode(code)}, ${who.ipHash},
+            ${who.member?.id ?? null}, ${who.role}, ${hashCode(code)}, ${who.ipHash},
             ${pending ? "pending" : "visible"}, ${pending ? verdict.reason : null})
     RETURNING id
   `;
@@ -315,10 +320,10 @@ export async function createAnswer(_prev: FormState, form: FormData): Promise<Fo
   const sql = await db();
   const inserted = await sql.begin(async (tx) => {
     const [row] = await tx<{ id: number }[]>`
-      INSERT INTO answers (question_id, body, author, image_url, owner_id, member_id, recovery_hash,
+      INSERT INTO answers (question_id, body, author, image_url, owner_id, member_id, staff_role, recovery_hash,
                            ip_hash, status, status_reason)
       SELECT ${questionId}::int, ${cleanBody}::text, ${nickname}::text, ${stored.url}::text,
-             ${who.visitorId}::text, ${who.member?.id ?? null}::int, ${hashCode(code)}::text,
+             ${who.visitorId}::text, ${who.member?.id ?? null}::int, ${who.role}::text, ${hashCode(code)}::text,
              ${who.ipHash}::text,
              ${pending ? "pending" : "visible"}::text, ${pending ? verdict.reason : null}::text
       WHERE EXISTS (SELECT 1 FROM questions WHERE id = ${questionId})

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { plural, timeAgo } from "@/lib/format";
 import type { QuestionRow } from "@/lib/queries";
 import { MemberBadge } from "./MemberBadge";
+import { StaffBadge } from "./StaffBadge";
 import { TagBadge } from "./TagBadge";
 import { VoteButton } from "./VoteButton";
 
@@ -13,6 +14,7 @@ export function QuestionCard({ q }: { q: QuestionRow }) {
       <div className="mb-1.5 flex flex-wrap items-center gap-2 text-xs text-muted">
         <TagBadge tag={q.tag} />
         {q.pinned && <span className="font-medium">📌 Pinned</span>}
+        <StaffBadge role={q.staff_role} />
         <MemberBadge title={q.badge_title} color={q.badge_color} />
         <span>{q.author || "Anonymous"}</span>
         <span aria-hidden>·</span>

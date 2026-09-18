@@ -24,6 +24,8 @@ export type QuestionRow = {
   status_reason: string | null;
   badge_title: string | null;
   badge_color: string | null;
+  /** 'admin' or 'tutor' if staff wrote it. */
+  staff_role: string | null;
   pinned: boolean;
   is_mine: boolean;
   voted: boolean;
@@ -41,6 +43,8 @@ export type AnswerRow = {
   status_reason: string | null;
   badge_title: string | null;
   badge_color: string | null;
+  /** 'admin' or 'tutor' if staff wrote it. */
+  staff_role: string | null;
   pinned: boolean;
   /** Written by the person who asked the question. */
   by_asker: boolean;
@@ -87,7 +91,7 @@ export async function listQuestions(opts: {
   const rows = await sql<QuestionRow[]>`
     SELECT q.id, q.title, q.body, q.tag, q.author, q.image_url, q.score,
            q.answer_count, q.accepted_answer_id, q.created_at, q.edited_at,
-           q.status, q.status_reason, m.title AS badge_title, m.color AS badge_color,
+           q.status, q.status_reason, q.staff_role, m.title AS badge_title, m.color AS badge_color,
            (q.pinned_at IS NOT NULL) AS pinned,
            ${mine(sql, "q", visitor, opts.memberId)} AS is_mine,
            EXISTS (SELECT 1 FROM votes v WHERE v.target_type = 'q'
@@ -115,7 +119,7 @@ export async function getQuestion(
   const [question] = await sql<(QuestionRow & { owner_id: string; member_id: number | null })[]>`
     SELECT q.id, q.title, q.body, q.tag, q.author, q.image_url, q.score, q.owner_id, q.member_id,
            q.answer_count, q.accepted_answer_id, q.created_at, q.edited_at,
-           q.status, q.status_reason, m.title AS badge_title, m.color AS badge_color,
+           q.status, q.status_reason, q.staff_role, m.title AS badge_title, m.color AS badge_color,
            (q.pinned_at IS NOT NULL) AS pinned,
            ${mine(sql, "q", visitor, memberId)} AS is_mine,
            EXISTS (SELECT 1 FROM votes v WHERE v.target_type = 'q'
@@ -129,7 +133,7 @@ export async function getQuestion(
   // Accepted answer first, then highest score, then oldest.
   const answers = await sql<AnswerRow[]>`
     SELECT a.id, a.body, a.author, a.image_url, a.score, a.created_at, a.edited_at,
-           a.status, a.status_reason, m.title AS badge_title, m.color AS badge_color,
+           a.status, a.status_reason, a.staff_role, m.title AS badge_title, m.color AS badge_color,
            (a.pinned_at IS NOT NULL) AS pinned,
            (a.owner_id = ${question.owner_id}
             OR (a.member_id IS NOT NULL AND a.member_id = ${question.member_id})) AS by_asker,
