@@ -149,6 +149,29 @@ const globalForDb = globalThis as unknown as {
   schemaReady?: Promise<void>;
 };
 
+// libpq options that configure the client, not the server. postgres.js sends any
+// URL parameter it doesn't recognize to Postgres as a setting, and Postgres
+// rejects these ("unrecognized configuration parameter"). Neon's connection
+// strings include channel_binding=require, which postgres.js can't do anyway.
+const CLIENT_ONLY_PARAMS = [
+  "channel_binding",
+  "gssencmode",
+  "sslcompression",
+  "krbsrvname",
+  "requirepeer",
+  "load_balance_hosts",
+];
+
+function connectionString(raw: string): string {
+  try {
+    const url = new URL(raw);
+    for (const param of CLIENT_ONLY_PARAMS) url.searchParams.delete(param);
+    return url.toString();
+  } catch {
+    return raw;
+  }
+}
+
 function client(): postgres.Sql {
   if (!globalForDb.sql) {
     const url = process.env.DATABASE_URL;
@@ -157,7 +180,7 @@ function client(): postgres.Sql {
         "DATABASE_URL is not set. Connect a Neon database in Vercel, then run `vercel env pull .env.local`.",
       );
     }
-    globalForDb.sql = postgres(url, {
+    globalForDb.sql = postgres(connectionString(url), {
       max: Number(process.env.DB_POOL_MAX ?? 5),
       // Neon's pooled endpoint runs PgBouncer, which doesn't support prepared statements.
       prepare: false,
