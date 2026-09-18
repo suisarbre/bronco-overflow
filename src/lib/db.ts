@@ -1,5 +1,7 @@
 import "server-only";
 import dns from "node:dns";
+import net from "node:net";
+import tls from "node:tls";
 import postgres from "postgres";
 
 // Neon hosts resolve to both IPv6 and IPv4, and Vercel functions can't open
@@ -211,6 +213,54 @@ function describeTarget(raw: string | undefined): string {
   }
 }
 
+/**
+ * When the database doesn't answer, check the network hop by hop so the error
+ * says where it stopped: TCP connect, Postgres's SSL request, or the TLS
+ * handshake. If all three pass, the network is fine and the database itself
+ * isn't answering. Only runs after a failure.
+ */
+async function probeNetwork(raw: string | undefined): Promise<string> {
+  let host: string;
+  let port: number;
+  try {
+    const url = new URL(raw ?? "");
+    host = url.hostname;
+    port = Number(url.port) || 5432;
+  } catch {
+    return "probe skipped: DATABASE_URL isn't a valid URL";
+  }
+
+  const started = performance.now();
+  const ms = () => Math.round(performance.now() - started);
+  const steps: string[] = [];
+  const socket = net.connect({ host, port });
+  const step = <T>(work: Promise<T>, name: string) =>
+    withTimeout(work, 5_000, `${name}: no answer after 5s`);
+
+  try {
+    await step(new Promise((ok, fail) => socket.once("connect", ok).once("error", fail)), "tcp");
+    steps.push(`tcp ok ${ms()}ms (${socket.remoteAddress})`);
+
+    // SSLRequest: length 8, code 80877103. The server replies with one byte, 'S' or 'N'.
+    socket.write(Buffer.from([0, 0, 0, 8, 4, 210, 22, 47]));
+    const reply = await step(
+      new Promise<Buffer>((ok, fail) => socket.once("data", ok).once("error", fail)),
+      "ssl request",
+    );
+    steps.push(`ssl request '${String.fromCharCode(reply[0])}' ${ms()}ms`);
+
+    const secure = tls.connect({ socket, servername: host, rejectUnauthorized: false });
+    await step(new Promise((ok, fail) => secure.once("secureConnect", ok).once("error", fail)), "tls");
+    steps.push(`tls ok ${ms()}ms — network is fine, the database itself isn't answering`);
+    secure.destroy();
+  } catch (err) {
+    steps.push(`stopped at ${(err as Error).message} (${ms()}ms)`);
+  } finally {
+    socket.destroy();
+  }
+  return steps.join(" → ");
+}
+
 function withTimeout<T>(work: Promise<T>, ms: number, message: string): Promise<T> {
   return Promise.race([
     work,
@@ -236,7 +286,10 @@ async function applySchema(sql: postgres.Sql): Promise<void> {
   try {
     await withTimeout(sql`SELECT 1`, REACH_TIMEOUT_MS, `no answer after ${REACH_TIMEOUT_MS / 1000}s`);
   } catch (err) {
-    throw new Error(`[db ${build}] Can't reach ${where}: ${(err as Error).message}`, { cause: err });
+    const network = await probeNetwork(process.env.DATABASE_URL);
+    throw new Error(`[db ${build}] Can't reach ${where}: ${(err as Error).message}. Network check: ${network}`, {
+      cause: err,
+    });
   }
   const reachedIn = Date.now() - started;
 
