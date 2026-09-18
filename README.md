@@ -23,9 +23,10 @@ deliberately small. See [Contributing](#contributing) before adding anything.
   unlocks that post on another browser or device. Only a hash of the code is stored.
 - **Reporting**: when enough different browsers report a post (3 by default), it is hidden for a tutor to
   review — hidden, not deleted.
-- **Signing in** happens at `/login`, with one box for everything: the admin password, the tutor password,
-  or a badge code. The header then shows **ADMIN**, **TUTOR**, or the person's badge. Students never need to
-  sign in.
+- **Signing in** happens at `/login` (linked quietly from the footer), with one box for everything: the admin
+  password, the tutor password, or a badge code. The header then shows **ADMIN**, **TUTOR**, or the person's
+  badge, and staff get a **Moderation** button with the number of posts waiting for them. Students never need
+  to sign in, so there's deliberately no sign-in button in the header.
 - **Tutor tools** at `/admin`: an emergency read-only switch, temporary setting changes that expire on
   their own, the word filter, and a review queue with approve / hide / delete and bulk delete.
 - **Two staff logins.** Signing in with `ADMIN_PASSWORD` makes you an **admin**; signing in with the

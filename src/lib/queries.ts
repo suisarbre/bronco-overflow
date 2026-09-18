@@ -164,6 +164,7 @@ export type ModerationRow = {
   reasons: string[] | null;
   owner_id: string;
   ip_hash: string;
+  reviewed_at: Date | null;
   /** How much this browser / network posted in the last day, for the bulk-delete buttons. */
   by_owner: number;
   by_ip: number;
@@ -171,13 +172,13 @@ export type ModerationRow = {
 
 const MODERATION_COLUMNS = (sql: postgres.Sql) => sql`
   SELECT 'q' AS type, q.id, q.id AS question_id, q.title, q.body, q.author, q.image_url,
-         q.status, q.status_reason, q.created_at, q.owner_id, q.ip_hash,
+         q.status, q.status_reason, q.created_at, q.reviewed_at, q.owner_id, q.ip_hash,
          (SELECT count(*)::int FROM reports r WHERE r.target_type = 'q' AND r.target_id = q.id) AS reports,
          (SELECT array_agg(DISTINCT r.reason) FROM reports r WHERE r.target_type = 'q' AND r.target_id = q.id) AS reasons
   FROM questions q
   UNION ALL
   SELECT 'a' AS type, a.id, a.question_id, '' AS title, a.body, a.author, a.image_url,
-         a.status, a.status_reason, a.created_at, a.owner_id, a.ip_hash,
+         a.status, a.status_reason, a.created_at, a.reviewed_at, a.owner_id, a.ip_hash,
          (SELECT count(*)::int FROM reports r WHERE r.target_type = 'a' AND r.target_id = a.id) AS reports,
          (SELECT array_agg(DISTINCT r.reason) FROM reports r WHERE r.target_type = 'a' AND r.target_id = a.id) AS reasons
   FROM answers a
@@ -199,15 +200,31 @@ const WITH_POSTER_COUNTS = (sql: postgres.Sql) => sql`
   LEFT JOIN by_ip ON by_ip.ip_hash = posts.ip_hash
 `;
 
-/** Posts waiting for review, auto-hidden posts, and anything that has been reported. */
+/**
+ * What still needs a tutor: posts held for approval, and anything hidden or
+ * reported that nobody has reviewed yet. Once a tutor approves or hides a post
+ * it drops out (it's still under "Recent posts").
+ */
+const NEEDS_A_LOOK = (sql: postgres.Sql) =>
+  sql`(status = 'pending' OR (reviewed_at IS NULL AND (status = 'hidden' OR reports > 0)))`;
+
 export async function moderationQueue(): Promise<ModerationRow[]> {
   const sql = await db();
   return sql<ModerationRow[]>`
     SELECT * FROM (${WITH_POSTER_COUNTS(sql)}) queue
-    WHERE status <> 'visible' OR reports > 0
+    WHERE ${NEEDS_A_LOOK(sql)}
     ORDER BY (status <> 'visible') DESC, reports DESC, created_at DESC
     LIMIT 100
   `;
+}
+
+/** The number on the header's Moderation button. */
+export async function moderationCount(): Promise<number> {
+  const sql = await db();
+  const [{ n }] = await sql<{ n: number }[]>`
+    SELECT count(*)::int AS n FROM (${MODERATION_COLUMNS(sql)}) posts WHERE ${NEEDS_A_LOOK(sql)}
+  `;
+  return n;
 }
 
 export async function recentPosts(limit = 30): Promise<ModerationRow[]> {
