@@ -183,6 +183,9 @@ Things that have bitten us, or would:
 - **Scale.** Search is `ILIKE '%…%'` and "Hot" sorts in SQL over the whole table. Fine for thousands of
   questions, worth revisiting around tens of thousands.
 - **Never put anything secret in a `NEXT_PUBLIC_*` variable** — those are compiled into the browser bundle.
+- **An empty environment variable is not an unset one.** `DB_POOL_MAX=` with no value once meant a pool of
+  zero connections, and every page waited forever. Read optional numbers with a fallback for empty and
+  invalid values, and leave optional variables out of Vercel rather than adding them blank.
 
 ## Contributing
 

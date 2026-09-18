@@ -1,12 +1,7 @@
 import "server-only";
-import dns from "node:dns";
 import net from "node:net";
 import tls from "node:tls";
 import postgres from "postgres";
-
-// Neon hosts resolve to both IPv6 and IPv4, and Vercel functions can't open
-// outbound IPv6 connections: an IPv6 attempt just goes unanswered. Try IPv4 first.
-dns.setDefaultResultOrder("ipv4first");
 
 const SCHEMA = `
 -- Wait only briefly for locks: if another session is mid-DDL (or stuck), fail
@@ -179,6 +174,12 @@ function connectionString(raw: string): string {
   }
 }
 
+/** DB_POOL_MAX if it's a positive whole number; otherwise 5. Empty or 0 must not mean "no connections". */
+function poolSize(): number {
+  const n = Number.parseInt(process.env.DB_POOL_MAX ?? "", 10);
+  return Number.isInteger(n) && n > 0 ? n : 5;
+}
+
 function client(): postgres.Sql {
   if (!globalForDb.sql) {
     const url = process.env.DATABASE_URL;
@@ -188,7 +189,7 @@ function client(): postgres.Sql {
       );
     }
     globalForDb.sql = postgres(connectionString(url), {
-      max: Number(process.env.DB_POOL_MAX ?? 5),
+      max: poolSize(),
       // Neon's pooled endpoint runs PgBouncer, which doesn't support prepared statements.
       prepare: false,
       // Fail fast and show the error page instead of leaving the visitor on a
